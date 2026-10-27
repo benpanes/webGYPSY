@@ -4,6 +4,7 @@
 //   GypsyChart.line(container, {
 //     title, xLabel, yLabel,
 //     series: [{ label, slot (1-8), dash (0-3), x: [...], y: [...] }],
+//     height,   // SVG height in px (default 280); width fills the container
 //   })
 //
 // Colours come from CSS custom properties --series-1 .. --series-8 and the
@@ -27,14 +28,18 @@
     return e;
   }
 
-  // Round tick values covering [lo, hi]
+  // Round tick values from the first at or above lo to the first at or
+  // above hi, so the last tick covers the data
   function ticks(lo, hi, count) {
     if (!(hi > lo)) { hi = lo + 1; lo = lo - 1; }
     const raw = (hi - lo) / count;
     const pow = Math.pow(10, Math.floor(Math.log10(raw)));
     const step = [1, 2, 2.5, 5, 10].map(m => m * pow).find(s => s >= raw);
     const out = [];
-    for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toPrecision(12));
+    for (let v = Math.ceil(lo / step) * step; ; v += step) {
+      out.push(+v.toPrecision(12));
+      if (v >= hi - step * 1e-9) break;
+    }
     return { values: out, step };
   }
 
@@ -58,7 +63,7 @@
     return Math.abs(xs[lo] - x) <= Math.abs(xs[hi] - x) ? lo : hi;
   }
 
-  function line(container, { title, xLabel, yLabel, series }) {
+  function line(container, { title, xLabel, yLabel, series, height = 280 }) {
     container.innerHTML = "";
     container.classList.add("chart");
 
@@ -86,7 +91,8 @@
     }
     container.appendChild(head);
 
-    const W = Math.max(280, container.clientWidth || 600), H = 280;
+    // Fill the container's width; height is the plot area plus axes
+    const W = Math.max(280, container.clientWidth - 20 || 600), H = Math.max(160, height);
     const pw = W - M.left - M.right, ph = H - M.top - M.bottom;
     const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img",
                             "aria-label": `${title}: line chart of ${series.length} series` }, container);
@@ -103,7 +109,7 @@
       return svg;
     }
     const xt = ticks(xmin, xmax, Math.max(2, Math.floor(pw / 80)));
-    const yt = ticks(ymin, ymax * 1.05 || 1, 5);
+    const yt = ticks(ymin, ymax || 1, 5);
     const x0 = Math.min(xmin, xt.values[0]), x1 = Math.max(xmax, xt.values[xt.values.length - 1]);
     const y0 = Math.min(ymin, yt.values[0]), y1 = yt.values[yt.values.length - 1];
     const sx = v => M.left + (v - x0) / (x1 - x0 || 1) * pw;
@@ -146,6 +152,9 @@
         for (let i = s.x.length - 1; i >= 0; i--) if (Number.isFinite(s.y[i])) return { s, y: sy(s.y[i]), x: sx(s.x[i]) };
         return null;
       }).filter(Boolean).sort((a, b) => a.y - b.y);
+      // Labels sit just above their line's end: keep them inside the plot
+      // and at least 13 px apart
+      for (const e of ends) e.y = Math.max(e.y, M.top + 16);
       for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
       for (const e of ends) {
         const t = el("text", { x: e.x - 4, y: e.y - 6, "text-anchor": "end", class: "chart-direct" }, svg);

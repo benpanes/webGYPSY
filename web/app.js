@@ -26,43 +26,34 @@
 5,15,PL,4000,,15,4.1,,
 `;
 
-  // Output variables offered in the charts: [column, label, unit]
+  // Stand totals offered in the charts, each for all species, conifers or
+  // deciduous (aspen is the only deciduous species, so deciduous volume is
+  // the AW volume). MAI rows are under "More" in the picker.
   const TOTALS = [
-    ["mvol_all", "Merchantable volume, all species", "m³/ha"],
-    ["tvol_all", "Total volume, all species", "m³/ha"],
-    ["mvol_con", "Merchantable volume, conifers", "m³/ha"],
-    ["tvol_con", "Total volume, conifers", "m³/ha"],
-    ["mai_m_all", "Merchantable MAI, all species", "m³/ha/yr"],
-    ["mai_t_all", "Total MAI, all species", "m³/ha/yr"],
-    ["mai_m_con", "Merchantable MAI, conifers", "m³/ha/yr"],
-    ["mai_t_con", "Total MAI, conifers", "m³/ha/yr"],
-    ["mai_m_dec", "Merchantable MAI, deciduous", "m³/ha/yr"],
-    ["mai_t_dec", "Total MAI, deciduous", "m³/ha/yr"],
+    { key: "tvol",  label: "Total volume",        unit: "m³/ha",    more: false,
+      cols: { all: "tvol_all",  con: "tvol_con",  dec: "tvol_aw" } },
+    { key: "mvol",  label: "Merchantable volume", unit: "m³/ha",    more: false,
+      cols: { all: "mvol_all",  con: "mvol_con",  dec: "mvol_aw" } },
+    { key: "mai_t", label: "Total MAI",           unit: "m³/ha/yr", more: true,
+      cols: { all: "mai_t_all", con: "mai_t_con", dec: "mai_t_dec" } },
+    { key: "mai_m", label: "Merchantable MAI",    unit: "m³/ha/yr", more: true,
+      cols: { all: "mai_m_all", con: "mai_m_con", dec: "mai_m_dec" } },
   ];
+  const GROUPS = { all: ["All", "all species"], con: ["Con", "conifers"], dec: ["Dec", "deciduous"] };
+  // Per-species outputs: [column prefix, label, unit, short label, under "More"]
   const MEASURES = [
-    ["topht_", "Top height", "m"],
-    ["n_", "Density", "stems/ha"],
-    ["ba_", "Basal area", "m²/ha"],
-    ["qmd_", "Quadratic mean diameter", "cm"],
-    ["sc_", "Species composition", "proportion"],
-    ["tvol_", "Total volume", "m³/ha"],
-    ["mvol_", "Merchantable volume", "m³/ha"],
-    ["mn_", "Merchantable stems", "stems/ha"],
-    ["mai_t_", "Total MAI", "m³/ha/yr"],
-    ["mai_m_", "Merchantable MAI", "m³/ha/yr"],
+    ["topht_",  "Top height",              "m",          "Top ht",      false],
+    ["tvol_",   "Total volume",            "m³/ha",      "Total vol",   false],
+    ["mvol_",   "Merchantable volume",     "m³/ha",      "Merch vol",   false],
+    ["n_",      "Density",                 "stems/ha",   "Density",     false],
+    ["ba_",     "Basal area",              "m²/ha",      "BA",          false],
+    ["qmd_",    "Quadratic mean diameter", "cm",         "QMD",         true],
+    ["sc_",     "Species composition",     "proportion", "Composition", true],
+    ["mn_",     "Merchantable stems",      "stems/ha",   "Merch stems", true],
+    ["mai_t_",  "Total MAI",               "m³/ha/yr",   "Total MAI",   true],
+    ["mai_m_",  "Merchantable MAI",        "m³/ha/yr",   "Merch MAI",   true],
   ];
   const X_LABELS = { year: "Years from start", totage: "Leading species total age (years)", standage: "Stand age (years)" };
-
-  function varInfo(col) {
-    const t = TOTALS.find(v => v[0] === col);
-    if (t) return { label: t[1], unit: t[2] };
-    for (const [p, label, unit] of MEASURES)
-      if (col.startsWith(p) && col.length === p.length + 2) {
-        const s = col.slice(p.length).toUpperCase();
-        return { label: `${label}, ${SPP_NAMES[s]} (${s})`, unit };
-      }
-    return { label: col, unit: "" };
-  }
 
   // ---- State ------------------------------------------------------------------
   const state = {
@@ -78,7 +69,10 @@
     runCount: 0,
     chartRuns: new Set(),
     chartStands: new Map(),                       // stand label -> colour slot
-    chartVars: new Set(["mvol_all", "mai_m_all"]),
+    chartVars: new Set(),                         // species columns, e.g. "ba_pl"
+    chartTotals: { tvol: { on: false, group: "all" }, mvol: { on: true, group: "all" },
+                   mai_t: { on: false, group: "all" }, mai_m: { on: false, group: "all" } },
+    chartSizes: {},                               // variable -> { wide, height }
   };
 
   // ---- Model ------------------------------------------------------------------
@@ -181,7 +175,6 @@
     state.edited = false;
     state.page = 0;
 
-    $("sourceBar").classList.remove("hidden");
     $("sourceName").textContent = src.name;
     $("sheetField").classList.toggle("hidden", src.kind !== "xlsx");
     $("delimField").classList.toggle("hidden", src.kind !== "text");
@@ -317,8 +310,8 @@
       state.rows[r].forEach((v, j) => {
         const td = tr.insertCell();
         if (cellProblem(fcol[j], v)) td.className = "bad";
-        const inp = document.createElement("input");
-        inp.value = v;
+        const inp = fcol[j] && fcol[j].key === "spp" ? speciesSelect(v) : document.createElement("input");
+        if (inp.tagName === "INPUT") inp.value = v;
         inp.dataset.col = j;
         inp.setAttribute("aria-label", `Row ${r + 1}, ${state.names[j]}`);
         td.appendChild(inp);
@@ -356,9 +349,23 @@
     $("gridStatus").textContent = parts.join(" · ");
   }
 
+  // Species cells: a menu of the four species groups. A value that isn't one
+  // of them (e.g. from a file) stays listed so it isn't lost, and is
+  // highlighted; lower case codes are shown as the group they match.
+  function speciesSelect(value) {
+    const sel = document.createElement("select");
+    sel.className = "spp";
+    const v = String(value).trim();
+    sel.add(new Option("–", ""));
+    for (const s of GypsyAPI.SPECIES) sel.add(new Option(`${s} – ${SPP_NAMES[s]}`, s));
+    if (v && !GypsyAPI.SPECIES.includes(v.toUpperCase())) sel.add(new Option(`${v} (not a species group)`, v));
+    sel.value = GypsyAPI.SPECIES.includes(v.toUpperCase()) ? v.toUpperCase() : v;
+    return sel;
+  }
+
   const tbodyRow = el => Number(el.closest("tr").dataset.row);
   $("grid").addEventListener("input", e => {
-    if (e.target.tagName !== "INPUT") return;
+    if (e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") return;
     const r = tbodyRow(e.target), j = Number(e.target.dataset.col);
     state.rows[r][j] = e.target.value;
     state.edited = true;
@@ -422,11 +429,14 @@
       rowLabels = keep.map(i => i + 1);
     } catch (e) { message("runMessages", e.message, "err"); return; }
 
-    const per4 = v => [v, v, v, v];
+    // Age and merchantability settings only apply while their boxes are
+    // ticked; otherwise the defaults (shown beside the boxes) are used
+    const age = $("showAge").checked;
     const options = {
-      simlen: num("simlen"), sitype: $("sitype").value, agetype: $("agetype").value,
-      psflag: $("psflag").checked, baflag: $("baflag").checked,
-      stumpHt: per4(num("stumpHt")), stumpDob: per4(num("stumpDob")), topDib: per4(num("topDib")),
+      simlen: num("simlen"), psflag: $("psflag").checked, baflag: $("baflag").checked,
+      sitype:   age ? $("sitype").value : "B",
+      agetype:  age ? $("agetype").value : "T",
+      ...merchCriteria(),
     };
     $("run").disabled = true;
     $("status").textContent = "Running…";
@@ -470,6 +480,49 @@
     renderTableControls(run.id);
   }
 
+  // ---- Merchantability criteria --------------------------------------------------------
+  // One set for all species, or one per species (table rows built here,
+  // filled from the all-species values the first time they're shown)
+  const MERCH = [["stumpHt", "0.05", 0.3], ["stumpDob", "0.5", 15], ["topDib", "0.5", 10]];
+  for (const s of GypsyAPI.SPECIES) {
+    const tr = $("merchTable").tBodies[0].insertRow();
+    tr.insertCell().textContent = `${s} – ${SPP_NAMES[s]}`;
+    for (const [id, step, def] of MERCH) {
+      const inp = document.createElement("input");
+      Object.assign(inp, { type: "number", step, value: def, id: `${id}_${s}` });
+      if (id === "stumpHt") inp.max = "0.3";
+      inp.setAttribute("aria-label", `${s} ${id === "stumpHt" ? "stump height" : id === "stumpDob" ? "stump DOB" : "top DIB"}`);
+      tr.insertCell().appendChild(inp);
+    }
+  }
+  let merchTableFilled = false;
+  $("merchBySpp").addEventListener("change", () => {
+    const by = $("merchBySpp").checked;
+    if (by && !merchTableFilled) {
+      for (const s of GypsyAPI.SPECIES) for (const [id] of MERCH) $(`${id}_${s}`).value = $(id).value;
+      merchTableFilled = true;
+    }
+    $("merchTable").classList.toggle("hidden", !by);
+    $("merchAll").classList.toggle("hidden", by);
+  });
+
+  // Criteria for a run: defaults unless "Customize" is ticked
+  function merchCriteria() {
+    const out = {};
+    for (const [id, , def] of MERCH) {
+      if (!$("customMerch").checked) out[id] = [def, def, def, def];
+      else if ($("merchBySpp").checked) out[id] = GypsyAPI.SPECIES.map(s => num(`${id}_${s}`));
+      else out[id] = Array(4).fill(num(id));
+    }
+    return out;
+  }
+
+  function merchText(o) {
+    const one = i => `${o.stumpHt[i]} m stump, ${o.stumpDob[i]} cm DOB, ${o.topDib[i]} cm DIB`;
+    const same = [1, 2, 3].every(i => o.stumpHt[i] === o.stumpHt[0] && o.stumpDob[i] === o.stumpDob[0] && o.topDib[i] === o.topDib[0]);
+    return same ? one(0) : "by species: " + GypsyAPI.SPECIES.map((s, i) => `${s} ${o.stumpHt[i]}/${o.stumpDob[i]}/${o.topDib[i]}`).join(", ");
+  }
+
   // ---- Runs list ----------------------------------------------------------------------
   function download(text, name, type = "text/csv") {
     const url = URL.createObjectURL(new Blob([text], { type }));
@@ -497,13 +550,12 @@
       name.textContent = run.name;
       const info = document.createElement("span");
       info.className = "small";
-      info.textContent = `${run.result.standLabels.length} stands · ${o.simlen} years · ` +
-        `stump ${o.stumpHt[0]} m, ${o.stumpDob[0]} cm DOB, top ${o.topDib[0]} cm DIB · ` +
+      info.textContent = `${run.result.standLabels.length} stands · ${o.simlen} years · ${merchText(o)} · ` +
         `SI type ${o.sitype}, age type ${o.agetype} · stocking ${o.psflag ? "on" : "off"}, BA ${o.baflag ? "on" : "off"}`;
       const spacer = document.createElement("span");
       spacer.className = "spacer";
-      const b1 = button("Yearly results (CSV)", () => download(GypsyAPI.toCSV(run.result.rows, run.result.standLabels), `${fileStem(run.name)}_yearly.csv`));
-      const b2 = button("Stand summary (CSV)", () => download(GypsyAPI.toCSV(run.result.init, run.result.standLabels), `${fileStem(run.name)}_stands.csv`));
+      const b1 = button("Export results (CSV)", () => download(GypsyAPI.toCSV(run.result.rows, run.result.standLabels), `${fileStem(run.name)}_yearly.csv`));
+      const b2 = button("Export stand summary (CSV)", () => download(GypsyAPI.toCSV(run.result.init, run.result.standLabels), `${fileStem(run.name)}_stands.csv`));
       const b3 = button("Remove", () => {
         state.runs = state.runs.filter(r => r !== run);
         state.chartRuns.delete(run.id);
@@ -555,39 +607,124 @@
 
     renderStandPicker();
 
-    const pt = $("pickTotals");
-    pt.innerHTML = "";
-    for (const [col, label] of TOTALS)
-      pt.appendChild(checkbox(label, state.chartVars.has(col), on => toggleVar(col, on)));
-
-    const ps = $("pickSpecies");
-    ps.innerHTML = "";
-    const hr = ps.insertRow();
-    hr.appendChild(document.createElement("th"));
-    for (const s of GypsyAPI.SPECIES) {
-      const th = document.createElement("th");
-      th.textContent = s;
-      th.title = SPP_NAMES[s];
-      hr.appendChild(th);
-    }
-    for (const [p, label] of MEASURES) {
-      const tr = ps.insertRow();
-      tr.insertCell().textContent = label;
-      for (const s of GypsyAPI.SPECIES) {
-        const col = p + s.toLowerCase();
-        const c = document.createElement("input");
-        c.type = "checkbox";
-        c.checked = state.chartVars.has(col);
-        c.setAttribute("aria-label", `${label}, ${SPP_NAMES[s]}`);
-        c.addEventListener("change", () => toggleVar(col, c.checked));
-        tr.insertCell().appendChild(c);
-      }
-    }
+    $("pickTotals").replaceChildren(totalsPicker(state.chartTotals, "chartTotalsMore", renderCharts));
+    $("pickSpecies").replaceChildren(speciesPicker(col => state.chartVars.has(col),
+      (cols, on) => { setAll(state.chartVars, cols, on); renderCharts(); }, "chartSpeciesMore"));
   }
 
-  function toggleVar(col, on) {
-    if (on) state.chartVars.add(col); else state.chartVars.delete(col);
-    renderCharts();
+  function setAll(set, cols, on) {
+    for (const c of cols) { if (on) set.add(c); else set.delete(c); }
+  }
+
+  // ---- Variable pickers (shared by the charts and the results table) ----------
+
+  // "More" / "Less" button below a list: shows or hides the extra rows, and
+  // remembers the choice (state[openKey]). Opens by itself when one of the
+  // extra rows is in use.
+  function moreToggle(openKey, startOpen, rows) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "more-toggle";
+    const set = open => {
+      state[openKey] = open;
+      rows.forEach(r => r.classList.toggle("hidden", !open));
+      b.textContent = open ? "Less" : "More";
+      b.setAttribute("aria-expanded", open);
+      b.classList.toggle("open", open);
+    };
+    b.addEventListener("click", () => set(!state[openKey]));
+    set(state[openKey] ?? startOpen);
+    return b;
+  }
+
+  // Stand totals: a box and an All / Con / Dec menu per measure, MAI under
+  // "More". sel: { tvol: { on, group }, ... }; onChange() after any change.
+  function totalsPicker(sel, openKey, onChange) {
+    const box = document.createElement("div");
+    const extra = [];
+    for (const t of TOTALS) {
+      const s = sel[t.key];
+      const row = document.createElement("div");
+      row.className = "total-row";
+      const cb = checkbox(t.label, s.on, on => { s.on = on; onChange(); });
+      const menu = document.createElement("select");
+      menu.setAttribute("aria-label", `${t.label}: species group`);
+      for (const [g, [short, long]] of Object.entries(GROUPS)) {
+        const o = new Option(short, g);
+        o.title = long;
+        menu.add(o);
+      }
+      menu.value = s.group;
+      menu.addEventListener("change", () => {
+        s.group = menu.value;
+        s.on = true;
+        cb.querySelector("input").checked = true;
+        onChange();
+      });
+      row.append(cb, menu);
+      box.appendChild(row);
+      if (t.more) extra.push(row);
+    }
+    box.appendChild(moreToggle(openKey, TOTALS.some(t => t.more && sel[t.key].on), extra));
+    return box;
+  }
+
+  // By species: one grid, with the less common measures shown by "More".
+  // onSet(columns, on) sets one or more species columns.
+  function speciesPicker(isChecked, onSet, openKey) {
+    const box = document.createElement("div");
+    const table = speciesMatrix(MEASURES, isChecked, onSet);
+    const extra = [...table.rows].slice(1).filter((_, i) => MEASURES[i][4]);
+    const used = MEASURES.some(m => m[4] && GypsyAPI.SPECIES.some(s => isChecked(m[0] + s.toLowerCase())));
+    box.append(table, moreToggle(openKey, used, extra));
+    return box;
+  }
+
+  // Checkbox grid: one row per measure, one column per species, and an "All"
+  // box per row (shows a dash when only some species are ticked)
+  function speciesMatrix(measures, isChecked, onSet) {
+    const table = document.createElement("table");
+    table.className = "varmatrix";
+    const hr = table.insertRow();
+    hr.appendChild(document.createElement("th"));
+    for (const [text, title] of [...GypsyAPI.SPECIES.map(s => [s, SPP_NAMES[s]]), ["All", "All species"]]) {
+      const th = document.createElement("th");
+      th.textContent = text;
+      th.title = title;
+      hr.appendChild(th);
+    }
+    for (const [p, label] of measures) {
+      const tr = table.insertRow();
+      tr.insertCell().textContent = label;
+      const cols = GypsyAPI.SPECIES.map(s => p + s.toLowerCase());
+      const boxes = cols.map((col, i) => {
+        const c = document.createElement("input");
+        c.type = "checkbox";
+        c.checked = isChecked(col);
+        c.setAttribute("aria-label", `${label}, ${SPP_NAMES[GypsyAPI.SPECIES[i]]}`);
+        tr.insertCell().appendChild(c);
+        return c;
+      });
+      const all = document.createElement("input");
+      all.type = "checkbox";
+      all.setAttribute("aria-label", `${label}, all species`);
+      const cell = tr.insertCell();
+      cell.className = "all";
+      cell.appendChild(all);
+      const syncAll = () => {
+        const n = boxes.filter(b => b.checked).length;
+        all.checked = n === boxes.length;
+        all.indeterminate = n > 0 && n < boxes.length;
+      };
+      boxes.forEach((c, i) => c.addEventListener("change", () => { syncAll(); onSet([cols[i]], c.checked); }));
+      all.addEventListener("change", () => {
+        boxes.forEach(b => { b.checked = all.checked; });
+        all.indeterminate = false;
+        onSet(cols, all.checked);
+      });
+      syncAll();
+    }
+    return table;
   }
 
   // Stand list (filtered, at most 200 shown); up to 8 stands at a time,
@@ -602,7 +739,7 @@
     const full = state.chartStands.size >= MAX_SERIES_SLOTS;
     for (const s of matches.slice(0, 200)) {
       const on = state.chartStands.has(s);
-      box.appendChild(checkbox(`Stand ${s}`, on, checked => {
+      box.appendChild(checkbox(s, on, checked => {
         if (checked) state.chartStands.set(s, freeSlot(new Set(state.chartStands.values())));
         else state.chartStands.delete(s);
         renderStandPicker();
@@ -626,64 +763,263 @@
     $("chartNote").textContent = "";
     const runs = state.runs.filter(r => state.chartRuns.has(r.id));
     const stands = GypsyAPI.sortStands([...state.chartStands.keys()]);
-    const order = [...TOTALS.map(t => t[0]), ...MEASURES.flatMap(([p]) => GypsyAPI.SPECIES.map(s => p + s.toLowerCase()))];
-    const vars = order.filter(v => state.chartVars.has(v));
-    if (!runs.length || !stands.length || !vars.length) {
+    // One panel per stand total, and one per species measure holding every
+    // species selected for it
+    const panels = [];
+    for (const t of TOTALS) {
+      const sel = state.chartTotals[t.key];
+      if (!sel.on) continue;
+      const col = t.cols[sel.group];
+      panels.push({ key: col, label: `${t.label}, ${GROUPS[sel.group][1]}`, unit: t.unit, cols: [{ col, spp: null }] });
+    }
+    for (const [p, label, unit] of MEASURES) {
+      const cols = GypsyAPI.SPECIES.filter(s => state.chartVars.has(p + s.toLowerCase()))
+                                   .map(s => ({ col: p + s.toLowerCase(), spp: s }));
+      if (cols.length) panels.push({ key: p.replace(/_$/, ""), label, unit, cols });
+    }
+    if (!runs.length || !stands.length || !panels.length) {
       $("chartNote").textContent = "Choose at least one simulation, stand and variable to chart.";
       return;
     }
-
-    // Colour by stand when several stands are shown (line style by run);
-    // otherwise colour by run
-    let useRuns = runs;
-    if (stands.length > 1 && runs.length > 4) {
-      useRuns = runs.slice(0, 4);
-      $("chartNote").textContent = "With several stands, up to 4 simulations are shown (one line style each).";
-    }
     const xKey = $("xAxis").value;
+    const notes = new Set();
 
-    for (const v of vars) {
-      const info = varInfo(v);
+    for (const panel of panels) {
+      const multiSpp = panel.cols.length > 1;
+      // Colour carries one thing per chart: species when the chart has
+      // several, else stands when several are shown, else simulations. Line
+      // style then separates the remaining stand/simulation combinations
+      // (up to 4).
+      let combos = [];
+      runs.forEach(run => stands.forEach(s => combos.push({ run, s })));
+      let colourBy;
+      if (multiSpp) colourBy = "spp";
+      else if (stands.length > 1) colourBy = "stand";
+      else colourBy = "run";
+      const dashGroups = colourBy === "spp" ? combos.length : colourBy === "stand" ? runs.length : 1;
+      if (dashGroups > 4) {
+        if (colourBy === "spp") {
+          combos = combos.slice(0, 4);
+          notes.add("Charts with several species show up to 4 stand and simulation combinations (one line style each).");
+        } else {
+          const keep = new Set(runs.slice(0, 4));
+          combos = combos.filter(c => keep.has(c.run));
+          notes.add("With several stands, up to 4 simulations are shown (one line style each).");
+        }
+      }
+      const comboRuns = [...new Set(combos.map(c => c.run))];
+
       const series = [];
-      useRuns.forEach((run, ri) => {
+      combos.forEach(({ run, s }, ci) => {
         const { names, columns } = run.result.rows;
-        const xc = columns[names.indexOf(xKey)], yc = columns[names.indexOf(v)];
+        const k = run.result.standLabels.indexOf(s);
+        if (k < 0) return;
         const per = run.options.simlen;
-        for (const s of stands) {
-          const k = run.result.standLabels.indexOf(s);
-          if (k < 0) continue;
-          const multiStand = stands.length > 1;
+        const xc = columns[names.indexOf(xKey)];
+        for (const { col, spp } of panel.cols) {
+          const yc = columns[names.indexOf(col)];
+          const y = yc.subarray(k * per, (k + 1) * per);
+          if (!y.some(Number.isFinite)) continue;   // e.g. species not in this stand
+          const parts = [];
+          if (multiSpp) parts.push(spp);
+          if (stands.length > 1) parts.push(`Stand ${s}`);
+          if (runs.length > 1 || !parts.length) parts.push(run.name);
           series.push({
-            label: multiStand ? (useRuns.length > 1 ? `Stand ${s} · ${run.name}` : `Stand ${s}`) : run.name,
-            slot: multiStand ? state.chartStands.get(s) : run.slot,
-            dash: multiStand && useRuns.length > 1 ? ri : 0,
+            label: parts.join(" · "),
+            slot: colourBy === "spp" ? GypsyAPI.SPECIES.indexOf(spp) + 1
+                : colourBy === "stand" ? state.chartStands.get(s) : run.slot,
+            dash: colourBy === "spp" ? ci : colourBy === "stand" ? comboRuns.indexOf(run) : 0,
             x: xc.subarray(k * per, (k + 1) * per),
-            y: yc.subarray(k * per, (k + 1) * per),
+            y,
           });
         }
       });
-      const panel = document.createElement("div");
-      box.appendChild(panel);
-      const chartBox = document.createElement("div");
-      panel.appendChild(chartBox);
-      const title = stands.length === 1 ? `${info.label} — Stand ${stands[0]}` : info.label;
-      const svg = GypsyChart.line(chartBox, { title, xLabel: X_LABELS[xKey], yLabel: `${info.label.split(",")[0]} (${info.unit})`, series });
-      const actions = document.createElement("div");
-      actions.className = "chart-actions";
-      actions.appendChild(button("Download SVG", () => download(GypsyChart.toSVGText(svg), `gypsy_${v}.svg`, "image/svg+xml"), "link"));
-      panel.appendChild(actions);
+
+      const what = multiSpp ? panel.label
+                 : panel.cols[0].spp ? `${panel.label}, ${SPP_NAMES[panel.cols[0].spp]} (${panel.cols[0].spp})`
+                 : panel.label;
+      const title = stands.length === 1 ? `${what} — Stand ${stands[0]}` : what;
+      chartPanel(box, panel.key, { title, xLabel: X_LABELS[xKey],
+                                   yLabel: `${panel.label.split(",")[0]} (${panel.unit})`, series });
     }
+    $("chartNote").textContent = [...notes].join(" ");
   }
-  let resizeTimer;
-  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderCharts, 150); });
+
+  // ---- Chart panels: size, resizing and new windows ---------------------------
+  // Each variable remembers its own size (full width, dragged height) until
+  // the chart size setting is changed
+  const SIZES = { small: { min: 340, height: 220 }, medium: { min: 440, height: 280 }, large: { min: 680, height: 400 } };
+  const chartSize = v => state.chartSizes[v] || (state.chartSizes[v] = { wide: false, height: null });
+
+  function chartPanel(box, v, spec) {
+    const size = chartSize(v);
+    const panel = document.createElement("div");
+    panel.className = "chart-panel" + (size.wide ? " wide" : "");
+    const chartBox = document.createElement("div");
+    panel.appendChild(chartBox);
+    box.appendChild(panel);
+
+    const height = () => size.height || SIZES[$("chartSize").value].height;
+    let svg;
+    panel.draw = () => { svg = GypsyChart.line(chartBox, { ...spec, height: height() }); };
+
+    // Drag the handle under the chart (or use the arrow keys on it) to change
+    // the height
+    const grip = document.createElement("div");
+    grip.className = "chart-grip";
+    grip.tabIndex = 0;
+    grip.title = "Drag to change the chart height";
+    grip.setAttribute("role", "separator");
+    grip.setAttribute("aria-orientation", "horizontal");
+    grip.setAttribute("aria-label", `Resize ${spec.title}`);
+    const setHeight = h => { size.height = Math.round(Math.min(900, Math.max(180, h))); panel.draw(); };
+    grip.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      const y0 = e.clientY, h0 = height();
+      const move = ev => setHeight(h0 + ev.clientY - y0);
+      const up = () => { grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up);
+    });
+    grip.addEventListener("keydown", e => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setHeight(height() + (e.key === "ArrowDown" ? 20 : -20));
+      }
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "chart-actions";
+    const wide = button(size.wide ? "Half width" : "Full width", () => {
+      size.wide = !size.wide;
+      panel.classList.toggle("wide", size.wide);
+      wide.textContent = size.wide ? "Half width" : "Full width";
+      redrawCharts();
+    }, "link");
+    actions.append(
+      wide,
+      button("Open in new window", () => openChartWindow(v, spec), "link"),
+      button("Download SVG", () => download(GypsyChart.toSVGText(svg), `gypsy_${v}.svg`, "image/svg+xml"), "link"));
+    panel.append(grip, actions);
+    panel.draw();
+  }
+
+  function redrawCharts() {
+    for (const p of $("charts").querySelectorAll(".chart-panel")) p.draw();
+  }
+
+  // Redraw when the chart area changes width (window resize, full-width toggle)
+  let resizeTimer, lastWidth = 0;
+  new ResizeObserver(entries => {
+    const w = entries[0].contentRect.width;
+    if (Math.abs(w - lastWidth) < 1) return;
+    lastWidth = w;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(redrawCharts, 100);
+  }).observe($("charts"));
+
+  function applyChartSize() {
+    $("charts").style.setProperty("--chart-min", SIZES[$("chartSize").value].min + "px");
+  }
+  $("chartSize").addEventListener("change", () => {
+    state.chartSizes = {};
+    applyChartSize();
+    renderCharts();
+  });
+  applyChartSize();
+
+  // A chart in its own window: fills the window and redraws when it's resized.
+  // The window gets this page's styles, so it follows the same light/dark theme.
+  function openChartWindow(v, spec) {
+    const w = window.open("", "_blank", "width=960,height=640");
+    if (!w) {
+      message("runMessages", "The browser blocked the new window. Allow pop-ups for this page and try again.", "warn");
+      return;
+    }
+    const css = [...document.styleSheets].map(s => {
+      try { return [...s.cssRules].map(r => r.cssText).join("\n"); } catch (e) { return ""; }
+    }).join("\n");
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart</title><style>${css}
+body { padding: 12px; } .popup-bar { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 8px; }
+</style></head><body><div class="popup-bar"><button class="secondary" id="dl">Download SVG</button></div><div id="chart"></div></body></html>`);
+    w.document.close();
+    w.document.title = spec.title;
+
+    const box = w.document.getElementById("chart");
+    let svg, timer;
+    const head = () => box.querySelector(".chart-head")?.offsetHeight || 60;
+    const draw = () => {
+      svg = GypsyChart.line(box, { ...spec, height: 300 });   // first pass to measure the legend
+      svg = GypsyChart.line(box, { ...spec, height: Math.max(240, w.innerHeight - head() - 90) });
+    };
+    draw();
+    let size = "";
+    new w.ResizeObserver(() => {
+      const now = w.innerWidth + "x" + w.innerHeight;
+      if (now === size) return;
+      size = now;
+      clearTimeout(timer);
+      timer = setTimeout(draw, 100);
+    }).observe(w.document.documentElement);
+    w.document.getElementById("dl").addEventListener("click", () =>
+      download(GypsyChart.toSVGText(svg), `gypsy_${v}.svg`, "image/svg+xml"));
+  }
 
   // ---- Results table -----------------------------------------------------------------------
-  const TABLE_COLS = [
-    ["year", "Year", 0], ["totage", "Total age", 1], ["standage", "Stand age", 1],
-    ["tvol_con", "Conifer vol", 1], ["tvol_all", "Total vol", 1],
-    ["mvol_con", "Conifer merch vol", 1], ["mvol_all", "Merch vol", 1],
-    ["mai_t_all", "Total MAI", 2], ["mai_m_all", "Merch MAI", 2],
-  ];
+  // Columns: Stand and Year always, then the chosen ones in a fixed order
+  const AGE_COLS = [["totage", "Total age", "Leading species total age (years)"],
+                    ["standage", "Stand age", "Stand age (years)"]];
+  const TOTAL_SHORT = { tvol: "Total vol", mvol: "Merch vol", mai_t: "Total MAI", mai_m: "Merch MAI" };
+  state.tableCols = new Set(["totage", "standage"]);   // ages and species columns
+  state.tableTotals = { tvol: { on: true, group: "all" }, mvol: { on: true, group: "all" },
+                        mai_t: { on: false, group: "all" }, mai_m: { on: true, group: "all" } };
+
+  // Column -> { short, long, digits } (digits used when Decimals is Auto)
+  function colMeta(col) {
+    const a = AGE_COLS.find(c => c[0] === col);
+    if (a) return { short: a[1], long: a[2], digits: 1 };
+    for (const t of TOTALS)
+      for (const [g, c] of Object.entries(t.cols))
+        if (c === col) return { short: TOTAL_SHORT[t.key] + (g === "all" ? "" : ` (${GROUPS[g][0]})`),
+                                long: `${t.label}, ${GROUPS[g][1]} (${t.unit})`, digits: t.key.startsWith("mai") ? 2 : 1 };
+    for (const [p, label, unit, short] of MEASURES)
+      if (col.startsWith(p) && col.length === p.length + 2) {
+        const s = col.slice(p.length).toUpperCase();
+        return { short: `${short} ${s}`, long: `${label}, ${SPP_NAMES[s]} (${unit})`,
+                 digits: p === "sc_" ? 3 : p.startsWith("mai") ? 2 : (p === "n_" || p === "mn_") ? 0 : 1 };
+      }
+    return { short: col, long: col, digits: 2 };
+  }
+  // Ages, then stand totals, then species columns, each once
+  const tableColumns = () => [
+    ...AGE_COLS.map(c => c[0]).filter(c => state.tableCols.has(c)),
+    ...TOTALS.filter(t => state.tableTotals[t.key].on).map(t => t.cols[state.tableTotals[t.key].group]),
+    ...MEASURES.flatMap(([p]) => GypsyAPI.SPECIES.map(s => p + s.toLowerCase())).filter(c => state.tableCols.has(c)),
+  ].filter((c, i, a) => a.indexOf(c) === i);
+
+  // Column picker: ages, stand totals and by species, laid out like the
+  // chart pickers
+  function renderTableColumnPicker() {
+    const panel = (title, content) => {
+      const div = document.createElement("div");
+      div.className = "picker";
+      const h = document.createElement("h3");
+      h.textContent = title;
+      div.append(h, content);
+      return div;
+    };
+    const ages = document.createElement("div");
+    for (const [c, label] of AGE_COLS)
+      ages.appendChild(checkbox(label, state.tableCols.has(c), on => { setAll(state.tableCols, [c], on); renderTable(); }));
+    $("tableCols").replaceChildren(
+      panel("Ages", ages),
+      panel("Stand totals", totalsPicker(state.tableTotals, "tableTotalsMore", renderTable)),
+      panel("By species", speciesPicker(c => state.tableCols.has(c),
+        (cols, on) => { setAll(state.tableCols, cols, on); renderTable(); }, "tableSpeciesMore")));
+  }
 
   function renderTableControls(selectRun) {
     $("tableSection").classList.toggle("hidden", !state.runs.length);
@@ -703,46 +1039,77 @@
     sel.value = run.result.standLabels.includes(keep) ? keep : "";
     renderTable();
   }
-  function renderTable() {
+  // Rows and cells for the current table settings: { headers, titles, rows }
+  // with rows as arrays of display strings (all matching rows)
+  function tableContent() {
     const run = state.runs.find(r => r.id === Number($("tableRun").value));
-    if (!run) return;
+    if (!run) return null;
     const { names, columns } = run.result.rows;
     const col = n => columns[names.indexOf(n)];
     const idx = col("stand_idx"), year = col("year"), step = Number($("step").value);
     const only = $("tableStand").value;
-    const fmt = (v, d) => (Number.isNaN(v) ? "" : v.toFixed(d));
+    const from = Number($("yearFrom").value) || 1, to = Number($("yearTo").value) || Infinity;
+    const dec = $("decimals").value;
+    const cols = tableColumns().map(c => ({ c, data: col(c), meta: colMeta(c) }));
+    const fmt = (v, d) => (Number.isNaN(v) ? "" : v.toFixed(dec === "auto" ? d : Number(dec)));
 
+    const rows = [];
+    for (let r = 0; r < idx.length; r++) {
+      if (year[r] < from || year[r] > to || year[r] % step !== 0) continue;
+      const label = run.result.standLabels[idx[r] - 1];
+      if (only && label !== only) continue;
+      rows.push([label, String(year[r]), ...cols.map(c => fmt(c.data[r], c.meta.digits))]);
+    }
+    return {
+      run,
+      headers: ["Stand", "Year", ...cols.map(c => c.meta.short)],
+      titles:  ["Stand", "Years from start", ...cols.map(c => c.meta.long)],
+      rows,
+    };
+  }
+
+  const TABLE_MAX = 2000;
+  function renderTable() {
+    const t = tableContent();
+    if (!t) return;
     const table = $("results");
     table.innerHTML = "";
     const hr = table.createTHead().insertRow();
-    for (const t of ["Stand", ...TABLE_COLS.map(c => c[1])]) {
+    t.headers.forEach((h, i) => {
       const th = document.createElement("th");
-      th.textContent = t;
+      th.textContent = h;
+      th.title = t.titles[i];
       hr.appendChild(th);
-    }
+    });
     const tbody = table.createTBody();
-    let shown = 0;
-    for (let r = 0; r < idx.length && shown < 2000; r++) {
-      if (year[r] % step !== 0) continue;
-      const label = run.result.standLabels[idx[r] - 1];
-      if (only && label !== only) continue;
+    for (const row of t.rows.slice(0, TABLE_MAX)) {
       const tr = tbody.insertRow();
-      tr.insertCell().textContent = label;
-      for (const [n, , d] of TABLE_COLS) tr.insertCell().textContent = fmt(col(n)[r], d);
-      shown++;
+      for (const v of row) tr.insertCell().textContent = v;
     }
-    if (shown >= 2000) {
-      const tr = tbody.insertRow();
-      const td = tr.insertCell();
-      td.colSpan = TABLE_COLS.length + 1;
-      td.className = "small";
-      td.textContent = "First 2,000 rows shown; choose a stand, or download the CSV for everything.";
-    }
+    $("tableNote").textContent = t.rows.length > TABLE_MAX
+      ? `Showing the first ${TABLE_MAX.toLocaleString()} of ${t.rows.length.toLocaleString()} rows. Export table includes them all.`
+      : `${t.rows.length.toLocaleString()} rows`;
   }
-  $("tableRun").addEventListener("change", fillStandSelect);
-  $("tableStand").addEventListener("change", renderTable);
-  $("step").addEventListener("change", renderTable);
 
-  // Start with the example data
-  setSource({ kind: "text", name: "Example data (5 stands)", text: EXAMPLE });
+  $("tableExport").addEventListener("click", () => {
+    const t = tableContent();
+    if (!t) return;
+    const quote = s => (/[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
+    const lines = [t.headers, ...t.rows].map(r => r.map(quote).join(","));
+    download(lines.join("\n") + "\n", `${fileStem(t.run.name)}_table.csv`);
+  });
+  $("tableRun").addEventListener("change", fillStandSelect);
+  for (const id of ["tableStand", "step", "decimals"]) $(id).addEventListener("change", renderTable);
+  for (const id of ["yearFrom", "yearTo"]) $(id).addEventListener("input", renderTable);
+  renderTableColumnPicker();
+
+  // Optional settings: show the inputs, or the defaults in use
+  for (const [box, group, note] of [["showAge", "ageOptions", "ageDefault"], ["customMerch", "merchOptions", "merchDefault"]]) {
+    const sync = () => {
+      $(group).classList.toggle("hidden", !$(box).checked);
+      $(note).classList.toggle("hidden", $(box).checked);
+    };
+    $(box).addEventListener("change", sync);
+    sync();
+  }
 })();
