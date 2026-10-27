@@ -5,6 +5,13 @@ functions). The model runs as WebAssembly compiled from the C++ core of the
 [rGYPSY](https://github.com/benpanes/rGYPSY) R package, so results match the
 R package and the GYPSY SAS program.
 
+## Download
+
+Get `gypsy-vX.Y.Z.html` from the
+[latest release](https://github.com/benpanes/webGYPSY/releases/latest), save it
+anywhere, and open it in a web browser by double-clicking. It is a single file
+that works offline; your data never leaves your computer.
+
 ## Layout
 
 | Path                     | Contents                                                      |
@@ -106,3 +113,13 @@ $env:GYPSY_DATA_DIR = "<folder with test_gypsy_bp.xlsx and for_gypsy_test_bp.csv
 $env:NODE = "<path to node.exe>"   # e.g. the one in emsdk\node
 Rscript test/validate_sas_wasm.R
 ```
+
+## Licence
+
+webGYPSY is free software under the GNU General Public License, version 3
+(see `LICENSE`), the same licence as rGYPSY. It includes SheetJS Community
+Edition, which is under the Apache License 2.0 (`web/vendor/SHEETJS_LICENSE`).
+
+This is an independent implementation of the published GYPSY functions. It is
+not produced or endorsed by the Government of Alberta, and results are
+provided without warranty.

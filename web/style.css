@@ -113,7 +113,15 @@ table.results th, table.results td { padding: 4px 10px; border-bottom: 1px solid
 table.results th:first-child, table.results td:first-child { text-align: left; }
 table.results th { font-weight: 600; color: var(--muted); }
 
-/* ---- Charts ---------------------------------------------------------------- */
+/* ---- About ------------------------------------------------------------------- */
+footer.about { margin-top: 8px; padding: 0 4px; color: var(--muted); font-size: 0.88rem; }
+footer.about summary { cursor: pointer; width: max-content; }
+footer.about summary:hover { color: var(--text); }
+footer.about p { margin: 0 0 10px; max-width: 75ch; }
+footer.about a { color: var(--accent); }
+footer.about #buildInfo { margin-top: 8px; }
+
+/* ---- Charts---------------------------------------------------------------- */
 .chart-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .picker { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .picker h3 { font-size: 0.85rem; margin: 0 0 6px; color: var(--muted); font-weight: 600; }

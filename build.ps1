@@ -49,6 +49,19 @@ $html = [regex]::Replace($html, '<link rel="stylesheet" href="(?!https?:|//)([^"
   param($m) "<style>`n" + (Read-WebFile $m.Groups[1].Value).Replace("</style", "<\/style") + "`n</style>"
 })
 if ($html -match '<script src=|<link rel="stylesheet"') { throw "dist/gypsy.html still refers to an external file" }
+
+# Build information shown in the app's footer: version from the git tag
+# ("v1.0.0", or "v1.0.0-2-gabc1234" / "-dirty" between releases), the rGYPSY
+# commit the model was built from, and the build date
+$version = (git describe --tags --always --dirty 2>$null)
+if (-not $version) { $version = "unknown" }
+$model = (git -C rGYPSY rev-parse --short HEAD 2>$null)
+$date = Get-Date -Format "yyyy-MM-dd"
+$dot = [char]0x00B7   # middle dot (non-ASCII text in this script would be misread by Windows PowerShell)
+$info = "Version $version $dot model rGYPSY $model $dot built $date"
+if (-not $html.Contains(">Development build<")) { throw "web/index.html has no build information placeholder" }
+$html = $html.Replace(">Development build<", ">$([Net.WebUtility]::HtmlEncode($info))<")
+
 New-Item -ItemType Directory -Force dist | Out-Null
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot "dist/gypsy.html"), $html, (New-Object Text.UTF8Encoding $false))
-Write-Host "Built dist/gypsy.html ($([math]::Round((Get-Item dist/gypsy.html).Length / 1KB)) KB, single file)"
+Write-Host "Built dist/gypsy.html ($([math]::Round((Get-Item dist/gypsy.html).Length / 1KB)) KB, single file): $info"

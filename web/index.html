@@ -180,6 +180,29 @@
     <div class="table-wrap" style="margin-top:12px"><table class="results" id="results"></table></div>
     <div class="small" id="tableNote" style="margin-top:6px"></div>
   </section>
+
+  <!-- ---- About ---------------------------------------------------------------------- -->
+  <footer class="about">
+    <details>
+      <summary>About this app</summary>
+      <div class="more-body">
+        <p>webGYPSY runs the GYPSY growth and yield model (Alberta, May 2009 functions) in your browser.
+          Your data stays on your computer: nothing is uploaded. The model is the C++ core of the
+          <a href="https://github.com/benpanes/rGYPSY" target="_blank" rel="noopener">rGYPSY</a> R package,
+          which reproduces the GYPSY SAS program (<code>GYPSY_run.sas</code>) and was validated against it
+          on 7,333 test stands.</p>
+        <p><strong>Disclaimer.</strong> This is an independent implementation of the published GYPSY functions.
+          It is not produced or endorsed by the Government of Alberta. Results are provided as is, without
+          warranty of any kind.</p>
+        <p><strong>Licence.</strong> webGYPSY is free software under the
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU General Public License, version 3</a>.
+          Source: <a href="https://github.com/benpanes/webGYPSY" target="_blank" rel="noopener">github.com/benpanes/webGYPSY</a>.
+          It includes <a href="https://sheetjs.com" target="_blank" rel="noopener">SheetJS</a> Community Edition 0.20.3
+          (© SheetJS LLC, Apache License 2.0) for reading spreadsheet files.</p>
+      </div>
+    </details>
+    <div class="small" id="buildInfo">Development build</div>
+  </footer>
 </main>
 
 <script src="gypsy.js"></script>
