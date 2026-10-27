@@ -11,8 +11,10 @@ R package and the GYPSY SAS program.
 |--------------------------|---------------------------------------------------------------|
 | `rGYPSY/`                | rGYPSY as a git submodule (`cpp-core` branch); the model is in `rGYPSY/src/core` |
 | `src/gypsy_wasm.cpp`     | JavaScript bindings: exposes `runSim(input, options)`          |
-| `web/gypsy-api.js`       | Helpers: CSV input, stand ordering, chunked runs, CSV output   |
-| `web/index.html`         | Test page                                                      |
+| `web/gypsy-api.js`       | Helpers: delimited text, column mapping, stand ordering, chunked runs, CSV output |
+| `web/vendor/`            | [SheetJS](https://sheetjs.com) Community Edition 0.20.3 (`xlsx.full.min.js`, Apache 2.0, licence in `SHEETJS_LICENSE`), for reading .xlsx, .xls, .xlsb and .ods files |
+| `web/chart.js`           | SVG line charts with a hover tooltip                           |
+| `web/app.js`, `web/style.css`, `web/index.html` | The app: file drop, editable input table with column assignment, simulations, charts, results |
 | `web/gypsy.js`           | Built module (not in git; see below)                           |
 | `build.ps1`              | Build script                                                   |
 | `test/`                  | Comparison with the R package                                  |

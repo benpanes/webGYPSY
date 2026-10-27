@@ -30,18 +30,25 @@ if ($LASTEXITCODE -ne 0) { throw "em++ failed" }
 
 Write-Host "Built web/gypsy.js ($([math]::Round((Get-Item web/gypsy.js).Length / 1KB)) KB)"
 
-# ---- Single-file app: index.html with both scripts inlined -> dist/gypsy.html
-function Get-InlineScript($file) {
-  # "</script" inside a script would end the tag early
-  $js = [IO.File]::ReadAllText((Join-Path $PSScriptRoot $file)).Replace("</script", "<\/script")
-  "<script>`n$js`n</script>"
+# ---- Single-file app: index.html with its local scripts and stylesheets
+# inlined -> dist/gypsy.html
+function Read-WebFile($name) {
+  $path = Join-Path $PSScriptRoot "web/$name"
+  if (-not (Test-Path $path)) { throw "web/index.html refers to web/$name, which doesn't exist" }
+  [IO.File]::ReadAllText($path)
 }
-$html = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "web/index.html"))
-foreach ($f in "gypsy.js", "gypsy-api.js") {
-  $tag = "<script src=""$f""></script>"
-  if (-not $html.Contains($tag)) { throw "web/index.html has no $tag to inline" }
-  $html = $html.Replace($tag, (Get-InlineScript "web/$f"))
-}
+$html = Read-WebFile "index.html"
+# Local files only (web/ and its subfolders, e.g. vendor/). "</script" or
+# "</style" inside the inlined text would end the tag early, and "<!--" can
+# change how the HTML parser finds the end of a script; in JavaScript strings
+# "<\/" and "<\!" mean the same as "</" and "<!".
+$html = [regex]::Replace($html, '<script src="(?!https?:|//)([^":]+\.js)"></script>', {
+  param($m) "<script>`n" + (Read-WebFile $m.Groups[1].Value).Replace("</script", "<\/script").Replace("<!--", "<\!--") + "`n</script>"
+})
+$html = [regex]::Replace($html, '<link rel="stylesheet" href="(?!https?:|//)([^":]+\.css)">', {
+  param($m) "<style>`n" + (Read-WebFile $m.Groups[1].Value).Replace("</style", "<\/style") + "`n</style>"
+})
+if ($html -match '<script src=|<link rel="stylesheet"') { throw "dist/gypsy.html still refers to an external file" }
 New-Item -ItemType Directory -Force dist | Out-Null
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot "dist/gypsy.html"), $html, (New-Object Text.UTF8Encoding $false))
 Write-Host "Built dist/gypsy.html ($([math]::Round((Get-Item dist/gypsy.html).Length / 1KB)) KB, single file)"
