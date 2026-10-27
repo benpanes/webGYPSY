@@ -1,0 +1,2 @@
+# Third-party files are kept exactly as released: no line-ending conversion
+web/vendor/** -text
