@@ -1,0 +1,5 @@
+# Build output (run build.ps1)
+web/gypsy.js
+web/gypsy.wasm
+dist/
+*.o

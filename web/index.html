@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GYPSY Test Page</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #666660;
+    --border: #d9d9d4; --accent: #2f6b3a; --accent-text: #ffffff;
+    --warn-bg: #fff6e0; --warn-border: #e5c26b; --err-bg: #fdecea; --err-border: #e0a39b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161715; --panel: #1f201e; --text: #e8e8e4; --muted: #a0a09a;
+      --border: #3a3b38; --accent: #6fb27b; --accent-text: #10130f;
+      --warn-bg: #3a3220; --warn-border: #7a6430; --err-bg: #3d2522; --err-border: #8a4a42;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+            padding: 16px; margin-bottom: 16px; }
+  textarea { width: 100%; min-height: 200px; font: 13px/1.4 ui-monospace, Consolas, monospace;
+             background: var(--bg); color: var(--text); border: 1px solid var(--border);
+             border-radius: 6px; padding: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  label.check { flex-direction: row; align-items: center; gap: 6px; }
+  input[type=number], select { width: auto; min-width: 110px; padding: 5px 6px; border: 1px solid var(--border);
+                               border-radius: 5px; background: var(--bg); color: var(--text); font: inherit; }
+  button { padding: 8px 16px; border: 1px solid var(--accent); border-radius: 6px; font: inherit;
+           background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status { color: var(--muted); margin-left: 4px; }
+  .msg { border-radius: 6px; padding: 8px 12px; margin: 8px 0 0; white-space: pre-wrap; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .err  { background: var(--err-bg);  border: 1px solid var(--err-border); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+  th, td { padding: 4px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; color: var(--muted); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>GYPSY</h1>
+  <p class="sub">Test page for the WebAssembly build of the GYPSY growth and yield model.</p>
+
+  <section>
+    <h2>Input data</h2>
+    <p class="sub" style="margin-bottom:12px">One row per stand and species. Columns: stand, stand_age, spp, n, si, age, ht, ps, ba. Blank cells are missing.</p>
+    <div class="row" style="margin-bottom:12px">
+      <label>Load a CSV file <input type="file" id="file" accept=".csv,text/csv"></label>
+    </div>
+    <textarea id="csv" spellcheck="false">stand,stand_age,spp,n,si,age,ht,ps,ba
+1,35,PL,2400,,35,13.5,,18.2
+2,48,AW,1100,,48,19.8,70,21.5
+2,48,SW,450,,31,9.6,25,4.1
+3,62,SB,2900,12.5,,13.2,,22.8
+3,62,PL,600,16.0,,18.1,,6.3
+4,25,AW,6500,,25,9.2,,8.9
+4,25,SB,300,,21,3.4,,0.3
+4,25,SW,900,,18,3.1,,0.6
+4,25,PL,250,,20,4.8,,0.4
+5,15,PL,4000,,15,4.1,,
+</textarea>
+  </section>
+
+  <section>
+    <h2>Options</h2>
+    <div class="row">
+      <label>Years to project <input type="number" id="simlen" value="150" min="1" max="400"></label>
+      <label>SI type
+        <select id="sitype"><option value="B">Breast height age 50</option><option value="T">Total age 50</option></select>
+      </label>
+      <label>Age type
+        <select id="agetype"><option value="T">Total</option><option value="B">Breast height</option><option value="S">Stump height</option></select>
+      </label>
+      <label>Stump DOB (cm) <input type="number" id="stumpDob" value="15" step="0.5"></label>
+      <label>Top DIB (cm) <input type="number" id="topDib" value="10" step="0.5"></label>
+      <label class="check"><input type="checkbox" id="psflag" checked> Use percent stocking</label>
+      <label class="check"><input type="checkbox" id="baflag" checked> Use basal area</label>
+    </div>
+    <div class="row" style="margin-top:16px; align-items:center">
+      <button id="run" disabled>Run</button>
+      <span id="status">Loading model…</span>
+    </div>
+    <div id="messages"></div>
+  </section>
+
+  <section id="results" class="hidden">
+    <h2>Results</h2>
+    <div class="row" style="margin-bottom:12px; align-items:center">
+      <label>Show every <select id="step"><option>10</option><option selected>25</option><option>50</option></select></label>
+      <button class="secondary" id="dlRows">Download yearly results (CSV)</button>
+      <button class="secondary" id="dlInit">Download stand summary (CSV)</button>
+    </div>
+    <div class="table-wrap"><table id="table"></table></div>
+  </section>
+</main>
+
+<script src="gypsy.js"></script>
+<script src="gypsy-api.js"></script>
+<script>
+  "use strict";
+  const $ = id => document.getElementById(id);
+  let gypsy = null, last = null;
+
+  createGypsy().then(m => {
+    gypsy = m;
+    $("run").disabled = false;
+    $("status").textContent = "Ready";
+  }).catch(e => { $("status").textContent = "Could not load the model: " + e; });
+
+  $("file").addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { $("csv").value = reader.result; };
+    reader.readAsText(f);
+  });
+
+  function message(text, cls) {
+    const div = document.createElement("div");
+    div.className = "msg " + cls;
+    div.textContent = text;
+    $("messages").appendChild(div);
+  }
+
+  $("run").addEventListener("click", () => {
+    $("messages").innerHTML = "";
+    $("results").classList.add("hidden");
+    try {
+      const { input, warnings } = GypsyAPI.readInput($("csv").value);
+      const per4 = v => [v, v, v, v];
+      const options = {
+        simlen:   Number($("simlen").value),
+        sitype:   $("sitype").value,
+        agetype:  $("agetype").value,
+        psflag:   $("psflag").checked,
+        baflag:   $("baflag").checked,
+        stumpDob: per4(Number($("stumpDob").value)),
+        topDib:   per4(Number($("topDib").value)),
+      };
+      const t0 = performance.now();
+      last = GypsyAPI.run(gypsy, input, options);
+      const ms = performance.now() - t0;
+      for (const w of [...warnings, ...last.warnings]) message(w, "warn");
+      $("status").textContent = `${last.standLabels.length} stand(s) projected in ${ms.toFixed(0)} ms`;
+      showTable();
+      $("results").classList.remove("hidden");
+    } catch (e) {
+      message(e.message, "err");
+      $("status").textContent = "Stopped with an error";
+    }
+  });
+
+  const SHOW = [
+    ["year", "Year", 0], ["totage", "Total age", 1],
+    ["tvol_con", "Conifer vol", 1], ["tvol_all", "Total vol", 1],
+    ["mvol_con", "Conifer merch vol", 1], ["mvol_all", "Merch vol", 1],
+    ["mai_m_all", "Merch MAI", 2],
+  ];
+
+  function showTable() {
+    const { names, columns } = last.rows;
+    const col = n => columns[names.indexOf(n)];
+    const idx = col("stand_idx"), year = col("year"), step = Number($("step").value);
+    const fmt = (v, d) => (Number.isNaN(v) ? "" : v.toFixed(d));
+
+    let html = "<tr><th>Stand</th>" + SHOW.map(s => `<th>${s[1]}</th>`).join("") + "</tr>";
+    for (let r = 0; r < idx.length; r++) {
+      if (year[r] % step !== 0) continue;
+      const label = last.standLabels[idx[r] - 1];
+      html += `<tr><td>${label.replace(/</g, "&lt;")}</td>` +
+              SHOW.map(([n, , d]) => `<td>${fmt(col(n)[r], d)}</td>`).join("") + "</tr>";
+    }
+    $("table").innerHTML = html;
+  }
+  $("step").addEventListener("change", showTable);
+
+  function download(text, name) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  $("dlRows").addEventListener("click", () => download(GypsyAPI.toCSV(last.rows, last.standLabels), "gypsy_yearly.csv"));
+  $("dlInit").addEventListener("click", () => download(GypsyAPI.toCSV(last.init, last.standLabels), "gypsy_stands.csv"));
+</script>
+</body>
+</html>
