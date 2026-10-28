@@ -114,6 +114,19 @@ $env:NODE = "<path to node.exe>"   # e.g. the one in emsdk\node
 Rscript test/validate_sas_wasm.R
 ```
 
+## Acknowledgements
+
+GYPSY (Growth and Yield Projection System) was developed by Dr. Shongming
+Huang and colleagues with the Government of Alberta. The model is described
+in:
+
+Huang, S., Meng, S.X. and Yang, Y. 2009. A Growth and Yield Projection System
+(GYPSY) for Natural and Post-harvest Stands in Alberta. Alberta Sustainable
+Resource Development, Technical Report Pub. No. T/216. Edmonton, Alberta.
+
+Official information about GYPSY is on the Government of Alberta's
+[Growth and Yield Projection System page](https://www.alberta.ca/growth-and-yield-projection-system).
+
 ## Licence
 
 webGYPSY is free software under the GNU General Public License, version 3
