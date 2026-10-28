@@ -34,7 +34,16 @@
     if (!(hi > lo)) { hi = lo + 1; lo = lo - 1; }
     const raw = (hi - lo) / count;
     const pow = Math.pow(10, Math.floor(Math.log10(raw)));
-    const step = [1, 2, 2.5, 5, 10].map(m => m * pow).find(s => s >= raw);
+    const first = [1, 2, 2.5, 5, 10].map(m => m * pow).find(s => s >= raw);
+    // The round step nearest the requested count whose last tick ends close
+    // to the data, with at least two ticks (e.g. 50 ... 250 rather than 200,
+    // 400 for data up to 250)
+    const over = s => Math.ceil(hi / s - 1e-9) * s - hi;
+    const n = s => Math.ceil(hi / s - 1e-9) - Math.ceil(lo / s - 1e-9) + 1;
+    const step = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25].map(m => m * pow)
+      .filter(s => s >= raw / 2.5 && s <= raw * 2.5)
+      .sort((a, b) => Math.abs(Math.log(a / raw)) - Math.abs(Math.log(b / raw)))
+      .find(s => over(s) <= 0.1 * (hi - lo) && n(s) >= 2 && n(s) <= Math.max(2 * count, count + 3)) || first;
     const out = [];
     for (let v = Math.ceil(lo / step) * step; ; v += step) {
       out.push(+v.toPrecision(12));

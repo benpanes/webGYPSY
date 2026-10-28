@@ -12,16 +12,33 @@ Get `gypsy-vX.Y.Z.html` from the
 anywhere, and open it in a web browser by double-clicking. It is a single file
 that works offline; your data never leaves your computer.
 
+## Modes
+
+- **Single stand** (the default) is modelled on the Excel GYPSY Yield Table
+  Generator: enter the stand, utilization limits and one row per species
+  group (total age, top height or site index, density or initial density, and
+  percent stocking and basal area), with the Excel tool's validation rules.
+  Results are calculated attributes at the stand's age, merchantable MAI
+  culmination, a yield table, charts against stand age, an Excel workbook and
+  a printable report. As in the Excel tool, conifer, deciduous and total MAI
+  are over stand age and species MAI over the species' total age.
+- **Multiple stands** runs a table of stands from a CSV or spreadsheet, as
+  `GYPSY_Sim()` does in R, with several simulations to compare, charts and a
+  results table.
+
 ## Layout
 
 | Path                     | Contents                                                      |
 |--------------------------|---------------------------------------------------------------|
-| `rGYPSY/`                | rGYPSY as a git submodule (`cpp-core` branch); the model is in `rGYPSY/src/core` |
+| `rGYPSY/`                | rGYPSY as a git submodule (`main` branch); the model is in `rGYPSY/src/core` |
 | `src/gypsy_wasm.cpp`     | JavaScript bindings: exposes `runSim(input, options)`          |
 | `web/gypsy-api.js`       | Helpers: delimited text, column mapping, stand ordering, chunked runs, CSV output |
 | `web/vendor/`            | [SheetJS](https://sheetjs.com) Community Edition 0.20.3 (`xlsx.full.min.js`, Apache 2.0, licence in `SHEETJS_LICENSE`), for reading .xlsx, .xls, .xlsb and .ods files |
 | `web/chart.js`           | SVG line charts with a hover tooltip                           |
-| `web/app.js`, `web/style.css`, `web/index.html` | The app: file drop, editable input table with column assignment, simulations, charts, results |
+| `web/ui.js`              | Model loading, modes, tabs and shared helpers                  |
+| `web/single.js`          | Single stand mode                                              |
+| `web/app.js`             | Multiple stands mode: file drop, editable input table with column assignment, simulations, charts, results |
+| `web/style.css`, `web/index.html` | Page layout and styles                                |
 | `web/gypsy.js`           | Built module (not in git; see below)                           |
 | `build.ps1`              | Build script                                                   |
 | `test/`                  | Comparison with the R package                                  |
@@ -82,7 +99,7 @@ them all in memory.
 
 ## Updating the model
 
-After changes are pushed to rGYPSY's `cpp-core` branch:
+After changes are pushed to rGYPSY's `main` branch:
 
 ```bash
 git submodule update --remote rGYPSY
@@ -113,6 +130,21 @@ $env:GYPSY_DATA_DIR = "<folder with test_gypsy_bp.xlsx and for_gypsy_test_bp.csv
 $env:NODE = "<path to node.exe>"   # e.g. the one in emsdk\node
 Rscript test/validate_sas_wasm.R
 ```
+
+## Acknowledgements
+
+GYPSY (Growth and Yield Projection System) was developed by Dr. Shongming
+Huang and colleagues with the Government of Alberta. The model is described
+in:
+
+Huang, S., Meng, S.X. and Yang, Y. 2009. A Growth and Yield Projection System
+(GYPSY) for Natural and Post-harvest Stands in Alberta. Alberta Sustainable
+Resource Development, Technical Report Pub. No. T/216. Edmonton, Alberta.
+
+Official information about GYPSY is on the Government of Alberta's
+[Growth and Yield Projection System page](https://www.alberta.ca/growth-and-yield-projection-system).
+The single stand mode follows the layout of the Excel GYPSY Yield Table
+Generator (Alberta Sustainable Resource Development, 2010).
 
 ## Licence
 

@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
-// GYPSY web app: input table, simulations, charts and results
+// GYPSY web app, multiple stands mode: input table, simulations, charts and
+// results
 //
-// Uses gypsy.js (the model), gypsy-api.js (input and run helpers),
-// xlsx-reader.js and chart.js.
+// Uses gypsy-api.js (input and run helpers), SheetJS (spreadsheets),
+// chart.js and ui.js (the model, tabs and shared helpers).
 // ---------------------------------------------------------------------------
 
 (function () {
@@ -10,7 +11,7 @@
 
   const $ = id => document.getElementById(id);
   const FIELDS = GypsyAPI.FIELDS;
-  const SPP_NAMES = { AW: "Aspen", SB: "Black spruce", SW: "White spruce", PL: "Lodgepole pine" };
+  const { SPP_NAMES, download, fileStem, button, checkbox, message, enableTab } = GypsyUI;
   const MAX_SERIES_SLOTS = 8;
 
   const EXAMPLE = `stand,stand_age,spp,n,si,age,ht,ps,ba
@@ -76,19 +77,13 @@
   };
 
   // ---- Model ------------------------------------------------------------------
-  createGypsy().then(m => {
+  GypsyUI.model.then(m => {
     state.gypsy = m;
     $("run").disabled = false;
     $("status").textContent = "Ready";
   }).catch(e => { $("status").textContent = "Could not load the model: " + e; });
 
   // ---- Messages -------------------------------------------------------------------
-  function message(box, text, cls) {
-    const div = document.createElement("div");
-    div.className = "msg " + cls;
-    div.textContent = text;
-    $(box).appendChild(div);
-  }
   const clearMessages = box => { $(box).innerHTML = ""; };
 
   // ---- Loading input ------------------------------------------------------------------
@@ -524,16 +519,6 @@
   }
 
   // ---- Runs list ----------------------------------------------------------------------
-  function download(text, name, type = "text/csv") {
-    const url = URL.createObjectURL(new Blob([text], { type }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: name });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-  const fileStem = name => name.replace(/[^\w.-]+/g, "_");
-
   function renderRuns() {
     const box = $("runs");
     box.innerHTML = "";
@@ -566,26 +551,6 @@
     }
   }
 
-  function button(text, onClick, cls = "secondary") {
-    const b = document.createElement("button");
-    b.className = cls;
-    b.textContent = text;
-    b.addEventListener("click", onClick);
-    return b;
-  }
-
-  function checkbox(label, checked, onChange, disabled = false) {
-    const l = document.createElement("label");
-    l.className = "check";
-    const c = document.createElement("input");
-    c.type = "checkbox";
-    c.checked = checked;
-    c.disabled = disabled;
-    c.addEventListener("change", () => onChange(c.checked));
-    l.append(c, document.createTextNode(label));
-    return l;
-  }
-
   // ---- Charts ----------------------------------------------------------------------------
   function allStands() {
     const set = new Set();
@@ -594,7 +559,7 @@
   }
 
   function renderChartControls() {
-    $("chartSection").classList.toggle("hidden", !state.runs.length);
+    enableTab("m-charts", state.runs.length > 0);
     if (!state.runs.length) return;
 
     const pr = $("pickRuns");
@@ -899,7 +864,7 @@
     }, "link");
     actions.append(
       wide,
-      button("Open in new window", () => openChartWindow(v, spec), "link"),
+      button("Open in new window", () => GypsyUI.openChartWindow(spec, `gypsy_${v}.svg`, t => message("chartMessages", t, "warn")), "link"),
       button("Download SVG", () => download(GypsyChart.toSVGText(svg), `gypsy_${v}.svg`, "image/svg+xml"), "link"));
     panel.append(grip, actions);
     panel.draw();
@@ -928,45 +893,6 @@
     renderCharts();
   });
   applyChartSize();
-
-  // A chart in its own window: fills the window and redraws when it's resized.
-  // The window gets this page's styles, so it follows the same light/dark theme.
-  function openChartWindow(v, spec) {
-    const w = window.open("", "_blank", "width=960,height=640");
-    if (!w) {
-      message("runMessages", "The browser blocked the new window. Allow pop-ups for this page and try again.", "warn");
-      return;
-    }
-    const css = [...document.styleSheets].map(s => {
-      try { return [...s.cssRules].map(r => r.cssText).join("\n"); } catch (e) { return ""; }
-    }).join("\n");
-    w.document.open();
-    w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart</title><style>${css}
-body { padding: 12px; } .popup-bar { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 8px; }
-</style></head><body><div class="popup-bar"><button class="secondary" id="dl">Download SVG</button></div><div id="chart"></div></body></html>`);
-    w.document.close();
-    w.document.title = spec.title;
-
-    const box = w.document.getElementById("chart");
-    let svg, timer;
-    const head = () => box.querySelector(".chart-head")?.offsetHeight || 60;
-    const draw = () => {
-      svg = GypsyChart.line(box, { ...spec, height: 300 });   // first pass to measure the legend
-      svg = GypsyChart.line(box, { ...spec, height: Math.max(240, w.innerHeight - head() - 90) });
-    };
-    draw();
-    let size = "";
-    new w.ResizeObserver(() => {
-      const now = w.innerWidth + "x" + w.innerHeight;
-      if (now === size) return;
-      size = now;
-      clearTimeout(timer);
-      timer = setTimeout(draw, 100);
-    }).observe(w.document.documentElement);
-    w.document.getElementById("dl").addEventListener("click", () =>
-      download(GypsyChart.toSVGText(svg), `gypsy_${v}.svg`, "image/svg+xml"));
-  }
 
   // ---- Results table -----------------------------------------------------------------------
   // Columns: Stand and Year always, then the chosen ones in a fixed order
@@ -1022,7 +948,7 @@ body { padding: 12px; } .popup-bar { display: flex; justify-content: flex-end; g
   }
 
   function renderTableControls(selectRun) {
-    $("tableSection").classList.toggle("hidden", !state.runs.length);
+    enableTab("m-table", state.runs.length > 0);
     if (!state.runs.length) return;
     const sel = $("tableRun"), keep = selectRun ?? Number(sel.value);
     sel.innerHTML = "";

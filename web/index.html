@@ -8,178 +8,321 @@
 </head>
 <body>
 <main>
-  <h1>GYPSY</h1>
-  <p class="sub">Growth and yield projections for Alberta stands (GYPSY 2009 functions), running entirely in your browser.</p>
+  <header class="app-head">
+    <div>
+      <h1>GYPSY</h1>
+      <p class="sub">Growth and yield projections for Alberta stands (GYPSY 2009 functions), running entirely in your browser.</p>
+    </div>
+    <div class="mode-switch" id="modeSwitch" role="radiogroup" aria-label="Mode">
+      <button type="button" role="radio" data-mode="single" aria-checked="true">Single stand</button>
+      <button type="button" role="radio" data-mode="multi" aria-checked="false">Multiple stands</button>
+    </div>
+  </header>
 
-  <!-- ---- Input ------------------------------------------------------------ -->
-  <section id="inputSection">
-    <div class="section-head">
-      <h2>1. Input data</h2>
-      <span class="small">One row per stand and species</span>
+  <!-- ==== Single stand ================================================================ -->
+  <div class="mode" id="mode-single">
+    <div class="tab-bar">
+      <nav class="tabs" role="tablist" aria-label="Single stand">
+        <button type="button" role="tab" aria-controls="s-input">Stand</button>
+        <button type="button" role="tab" aria-controls="s-summary" disabled>Summary</button>
+        <button type="button" role="tab" aria-controls="s-yield" disabled>Yield table</button>
+        <button type="button" role="tab" aria-controls="s-charts" disabled>Charts</button>
+      </nav>
+      <div class="tab-actions">
+        <span class="small" id="sStatus">Loading model…</span>
+        <button id="sRun" disabled>Run GYPSY</button>
+        <details class="menu" id="sExportMenu">
+          <summary class="secondary-btn">Export</summary>
+          <div class="menu-body">
+            <button class="link" id="sXlsx" disabled>Excel workbook (.xlsx)</button>
+            <button class="link" id="sCsv" disabled>Yearly results (CSV)</button>
+            <button class="link" id="sPrint" disabled>Print report or save as PDF</button>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div id="sMessages"></div>
+
+    <!-- Stand input -->
+    <div class="tabpanel" role="tabpanel" id="s-input">
+      <div class="cards">
+        <section class="card">
+          <h2>Stand</h2>
+          <div class="form-grid">
+            <label class="field">Stand ID <input type="text" id="sStandId" placeholder="New stand"></label>
+            <label class="field">Stand type
+              <select id="sStandType"><option value="">Not given</option><option>Natural</option><option>Regenerated</option></select>
+            </label>
+            <label class="field">Stand age (years) <input type="number" id="sStandAge" min="1" step="1" placeholder="Leading age"></label>
+            <label class="field">Project to stand age <input type="number" id="sProjectTo" value="250" min="20" max="400" step="10"></label>
+          </div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="sPsflag" checked> Use percent stocking (spatial)</label>
+            <label class="check"><input type="checkbox" id="sBaflag" checked> Adjust to observed basal area</label>
+          </div>
+          <p class="small hint">Stand age defaults to the oldest species' total age.</p>
+        </section>
+
+        <section class="card">
+          <h2>Utilization limits</h2>
+          <table class="ytg-table" id="sUtil"></table>
+          <p class="small hint">Blank cells use the defaults shown.</p>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Species</h2>
+          <span class="small">Fill in a row for each species group in the stand. Choose what the age, height and density columns hold from their headings.</span>
+        </div>
+        <div class="table-wrap"><table class="ytg-table species" id="sSpecies"></table></div>
+        <div id="sChecks" class="checks-list"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="secondary" id="sExample">Load example</button>
+          <button class="secondary" id="sClear">Clear</button>
+        </div>
+      </section>
     </div>
 
-    <div class="drop" id="drop">
-      <button id="chooseFile">Choose a file</button>
-      <div class="small" style="margin-top:8px">or drop a CSV, text or spreadsheet file (.xlsx, .xls, .ods) here</div>
-      <input type="file" id="file" accept=".csv,.tsv,.txt,.dat,.xlsx,.xlsm,.xlsb,.xls,.ods,text/csv,text/plain" hidden>
+    <!-- Summary -->
+    <div class="tabpanel" role="tabpanel" id="s-summary" hidden>
+      <section class="card">
+        <div class="section-head"><h2 id="sSummaryTitle">Summary</h2><span class="small" id="sSummaryInfo"></span></div>
+        <h3 class="sub-head">Calculated attributes at the stand's age</h3>
+        <div class="table-wrap"><table class="results" id="sCalc"></table></div>
+      </section>
+      <div class="cards wide">
+        <section class="card">
+          <h3 class="sub-head">Merchantable MAI culmination</h3>
+          <div class="table-wrap"><table class="results" id="sCulm"></table></div>
+          <p class="small hint" id="sCulmNote"></p>
+        </section>
+        <section class="card">
+          <div class="section-head">
+            <h3 class="sub-head">Quick chart</h3>
+            <select id="sQuickChart" aria-label="Quick chart"></select>
+          </div>
+          <div id="sQuickBox"></div>
+        </section>
+      </div>
     </div>
 
-    <details class="more" id="moreInput">
-      <summary>More options</summary>
-      <div class="more-body">
+    <!-- Yield table -->
+    <div class="tabpanel" role="tabpanel" id="s-yield" hidden>
+      <section class="card">
+        <div class="section-head">
+          <h2 id="sYieldTitle">Yield table</h2>
+          <div class="row">
+            <label class="field">Table
+              <select id="sYieldKind"><option value="yield">Merchantable yield</option><option value="detail">By species</option></select>
+            </label>
+            <label class="field">Every <select id="sYieldStep"><option value="1">year</option><option value="5">5 years</option><option value="10" selected>10 years</option><option value="20">20 years</option></select></label>
+            <button class="secondary" id="sYieldCsv">Export table (CSV)</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="results grouped" id="sYield"></table></div>
+        <p class="small hint" id="sYieldNote"></p>
+      </section>
+    </div>
+
+    <!-- Charts -->
+    <div class="tabpanel" role="tabpanel" id="s-charts" hidden>
+      <section class="card">
+        <div id="sChartMessages"></div>
+        <div class="charts" id="sCharts"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ==== Multiple stands ============================================================= -->
+  <div class="mode" id="mode-multi" hidden>
+    <div class="tab-bar">
+      <nav class="tabs" role="tablist" aria-label="Multiple stands">
+        <button type="button" role="tab" aria-controls="m-input">Input data</button>
+        <button type="button" role="tab" aria-controls="m-run">Run</button>
+        <button type="button" role="tab" aria-controls="m-charts" disabled>Charts</button>
+        <button type="button" role="tab" aria-controls="m-table" disabled>Results table</button>
+      </nav>
+    </div>
+
+    <!-- Input -->
+    <div class="tabpanel" role="tabpanel" id="m-input">
+      <section id="inputSection">
+        <div class="section-head">
+          <h2>Input data</h2>
+          <span class="small">One row per stand and species</span>
+        </div>
+
+        <div class="drop" id="drop">
+          <button id="chooseFile">Choose a file</button>
+          <div class="small" style="margin-top:8px">or drop a CSV, text or spreadsheet file (.xlsx, .xls, .ods) here</div>
+          <input type="file" id="file" accept=".csv,.tsv,.txt,.dat,.xlsx,.xlsm,.xlsb,.xls,.ods,text/csv,text/plain" hidden>
+        </div>
+
+        <details class="more" id="moreInput">
+          <summary>More options</summary>
+          <div class="more-body">
+            <div class="row">
+              <button class="secondary" id="pasteToggle">Paste text</button>
+              <button class="secondary" id="loadExample">Load example</button>
+              <button class="secondary" id="newTable">New empty table</button>
+            </div>
+            <div id="pasteBox" class="hidden" style="margin-top:12px">
+              <textarea id="pasteText" spellcheck="false" placeholder="Paste rows copied from a spreadsheet or text file"></textarea>
+              <div class="row" style="margin-top:8px"><button id="pasteUse">Use pasted text</button></div>
+            </div>
+            <div id="sourceBar" class="row source-bar">
+              <label class="check"><input type="checkbox" id="hasHeader" checked> First row is column names</label>
+              <label class="field hidden" id="sheetField">Sheet <select id="sheet"></select></label>
+              <label class="field hidden" id="delimField">Separator
+                <select id="delimiter">
+                  <option value="auto">Detect</option>
+                  <option value=",">Comma</option>
+                  <option value="&#9;">Tab</option>
+                  <option value=";">Semicolon</option>
+                  <option value="|">Pipe</option>
+                  <option value=" ">Spaces</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <div id="gridArea" class="hidden">
+          <p class="small" style="margin:12px 0 8px"><strong id="sourceName"></strong> · Choose what each column holds from the menus above the columns. Cells can be edited directly; pasting a block copied from a spreadsheet fills the cells below and to the right.</p>
+          <div class="grid-wrap"><table class="grid" id="grid"></table></div>
+          <div class="grid-foot">
+            <div class="row" style="align-items:center">
+              <button class="secondary" id="addRow">Add row</button>
+              <span class="small" id="gridStatus"></span>
+            </div>
+            <div class="pager">
+              <button class="secondary" id="prevPage" aria-label="Previous page">‹</button>
+              <span class="small" id="pageInfo"></span>
+              <button class="secondary" id="nextPage" aria-label="Next page">›</button>
+              <select id="pageSize" aria-label="Rows per page"><option>25</option><option selected>100</option><option>500</option></select>
+            </div>
+          </div>
+        </div>
+        <div id="inputMessages"></div>
+      </section>
+    </div>
+
+    <!-- Options and run -->
+    <div class="tabpanel" role="tabpanel" id="m-run" hidden>
+      <section>
+        <div class="section-head"><h2>Run a simulation</h2></div>
         <div class="row">
-          <button class="secondary" id="pasteToggle">Paste text</button>
-          <button class="secondary" id="loadExample">Load example</button>
-          <button class="secondary" id="newTable">New empty table</button>
+          <label class="field">Run name <input type="text" id="runName" style="width:160px"></label>
+          <label class="field">Years to project <input type="number" id="simlen" value="150" min="1" max="400"></label>
         </div>
-        <div id="pasteBox" class="hidden" style="margin-top:12px">
-          <textarea id="pasteText" spellcheck="false" placeholder="Paste rows copied from a spreadsheet or text file"></textarea>
-          <div class="row" style="margin-top:8px"><button id="pasteUse">Use pasted text</button></div>
+        <div class="row" style="margin-top:12px">
+          <label class="check"><input type="checkbox" id="psflag" checked> Use percent stocking</label>
+          <label class="check"><input type="checkbox" id="baflag" checked> Use basal area</label>
         </div>
-        <div id="sourceBar" class="row source-bar">
-          <label class="check"><input type="checkbox" id="hasHeader" checked> First row is column names</label>
-          <label class="field hidden" id="sheetField">Sheet <select id="sheet"></select></label>
-          <label class="field hidden" id="delimField">Separator
-            <select id="delimiter">
-              <option value="auto">Detect</option>
-              <option value=",">Comma</option>
-              <option value="&#9;">Tab</option>
-              <option value=";">Semicolon</option>
-              <option value="|">Pipe</option>
-              <option value=" ">Spaces</option>
-            </select>
-          </label>
-        </div>
-      </div>
-    </details>
 
-    <div id="gridArea" class="hidden">
-      <p class="small" style="margin:12px 0 8px"><strong id="sourceName"></strong> · Choose what each column holds from the menus above the columns. Cells can be edited directly; pasting a block copied from a spreadsheet fills the cells below and to the right.</p>
-      <div class="grid-wrap"><table class="grid" id="grid"></table></div>
-      <div class="grid-foot">
-        <div class="row" style="align-items:center">
-          <button class="secondary" id="addRow">Add row</button>
-          <span class="small" id="gridStatus"></span>
+        <!-- Unticked, these use the defaults shown beside them -->
+        <div class="option-group">
+          <label class="check"><input type="checkbox" id="showAge" aria-controls="ageOptions"> Show age options</label>
+          <span class="small" id="ageDefault">Using SI at breast height age 50 and total age</span>
+          <div class="row sub-options hidden" id="ageOptions">
+            <label class="field">SI type
+              <select id="sitype"><option value="B">Breast height age 50</option><option value="T">Total age 50</option></select>
+            </label>
+            <label class="field">Age type
+              <select id="agetype"><option value="T">Total</option><option value="B">Breast height</option><option value="S">Stump height</option></select>
+            </label>
+          </div>
         </div>
-        <div class="pager">
-          <button class="secondary" id="prevPage" aria-label="Previous page">‹</button>
-          <span class="small" id="pageInfo"></span>
-          <button class="secondary" id="nextPage" aria-label="Next page">›</button>
-          <select id="pageSize" aria-label="Rows per page"><option>25</option><option selected>100</option><option>500</option></select>
+        <div class="option-group">
+          <label class="check"><input type="checkbox" id="customMerch" aria-controls="merchOptions"> Customize merchantability criteria</label>
+          <span class="small" id="merchDefault">Using a 0.3 m stump, 15 cm stump diameter outside bark and 10 cm top diameter inside bark</span>
+          <div class="sub-options hidden" id="merchOptions">
+            <div class="row" id="merchAll">
+              <label class="field">Stump height (m) <input type="number" id="stumpHt" value="0.3" step="0.05" max="0.3"></label>
+              <label class="field">Stump DOB (cm) <input type="number" id="stumpDob" value="15" step="0.5"></label>
+              <label class="field">Top DIB (cm) <input type="number" id="topDib" value="10" step="0.5"></label>
+            </div>
+            <label class="check" style="margin-top:10px"><input type="checkbox" id="merchBySpp" aria-controls="merchTable"> Different criteria for each species</label>
+            <table class="merch-table hidden" id="merchTable">
+              <thead><tr><th>Species</th><th>Stump height (m)</th><th>Stump DOB (cm)</th><th>Top DIB (cm)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </div>
-    <div id="inputMessages"></div>
-  </section>
+        <div class="row" style="margin-top:16px; align-items:center">
+          <button id="run" disabled>Run GYPSY</button>
+          <span class="small" id="status">Loading model…</span>
+        </div>
+        <div id="runMessages"></div>
+      </section>
 
-  <!-- ---- Options and run ---------------------------------------------------- -->
-  <section>
-    <div class="section-head"><h2>2. Run a simulation</h2></div>
-    <div class="row">
-      <label class="field">Run name <input type="text" id="runName" style="width:160px"></label>
-      <label class="field">Years to project <input type="number" id="simlen" value="150" min="1" max="400"></label>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <label class="check"><input type="checkbox" id="psflag" checked> Use percent stocking</label>
-      <label class="check"><input type="checkbox" id="baflag" checked> Use basal area</label>
+      <section id="runsSection" class="hidden">
+        <div class="section-head"><h2>Simulations</h2><span class="small">Each run keeps its own options and results. See them in the Charts and Results table tabs.</span></div>
+        <div class="runs" id="runs"></div>
+      </section>
     </div>
 
-    <!-- Unticked, these use the defaults shown beside them -->
-    <div class="option-group">
-      <label class="check"><input type="checkbox" id="showAge" aria-controls="ageOptions"> Show age options</label>
-      <span class="small" id="ageDefault">Using SI at breast height age 50 and total age</span>
-      <div class="row sub-options hidden" id="ageOptions">
-        <label class="field">SI type
-          <select id="sitype"><option value="B">Breast height age 50</option><option value="T">Total age 50</option></select>
-        </label>
-        <label class="field">Age type
-          <select id="agetype"><option value="T">Total</option><option value="B">Breast height</option><option value="S">Stump height</option></select>
-        </label>
-      </div>
-    </div>
-    <div class="option-group">
-      <label class="check"><input type="checkbox" id="customMerch" aria-controls="merchOptions"> Customize merchantability criteria</label>
-      <span class="small" id="merchDefault">Using a 0.3 m stump, 15 cm stump diameter outside bark and 10 cm top diameter inside bark</span>
-      <div class="sub-options hidden" id="merchOptions">
-        <div class="row" id="merchAll">
-          <label class="field">Stump height (m) <input type="number" id="stumpHt" value="0.3" step="0.05" max="0.3"></label>
-          <label class="field">Stump DOB (cm) <input type="number" id="stumpDob" value="15" step="0.5"></label>
-          <label class="field">Top DIB (cm) <input type="number" id="topDib" value="10" step="0.5"></label>
+    <!-- Charts -->
+    <div class="tabpanel" role="tabpanel" id="m-charts" hidden>
+      <section id="chartSection">
+        <div class="section-head">
+          <h2>Charts</h2>
+          <div class="row">
+            <label class="field">X axis
+              <select id="xAxis">
+                <option value="year">Years from start</option>
+                <option value="totage">Leading species total age</option>
+                <option value="standage">Stand age</option>
+              </select>
+            </label>
+            <label class="field">Chart size
+              <select id="chartSize">
+                <option value="small">Small</option>
+                <option value="medium" selected>Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <label class="check" style="margin-top:10px"><input type="checkbox" id="merchBySpp" aria-controls="merchTable"> Different criteria for each species</label>
-        <table class="merch-table hidden" id="merchTable">
-          <thead><tr><th>Species</th><th>Stump height (m)</th><th>Stump DOB (cm)</th><th>Top DIB (cm)</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+        <div class="chart-controls">
+          <div class="picker"><h3>Simulations</h3><div class="list" id="pickRuns"></div></div>
+          <div class="picker"><h3>Stands <span class="small" id="standCount"></span></h3>
+            <input type="text" id="standFilter" placeholder="Filter stands">
+            <div class="list" id="pickStands"></div></div>
+          <div class="picker"><h3>Stand totals</h3><div class="list" id="pickTotals"></div></div>
+          <div class="picker"><h3>By species</h3><div id="pickSpecies"></div></div>
+        </div>
+        <div id="chartMessages"></div>
+        <div id="chartNote" class="small"></div>
+        <div class="charts" id="charts"></div>
+      </section>
     </div>
-    <div class="row" style="margin-top:16px; align-items:center">
-      <button id="run" disabled>Run GYPSY</button>
-      <span class="small" id="status">Loading model…</span>
-    </div>
-    <div id="runMessages"></div>
-  </section>
 
-  <!-- ---- Runs ------------------------------------------------------------------ -->
-  <section id="runsSection" class="hidden">
-    <div class="section-head"><h2>3. Simulations</h2><span class="small">Each run keeps its own options and results</span></div>
-    <div class="runs" id="runs"></div>
-  </section>
-
-  <!-- ---- Charts ------------------------------------------------------------------ -->
-  <section id="chartSection" class="hidden">
-    <div class="section-head">
-      <h2>4. Charts</h2>
-      <div class="row">
-        <label class="field">X axis
-          <select id="xAxis">
-            <option value="year">Years from start</option>
-            <option value="totage">Leading species total age</option>
-            <option value="standage">Stand age</option>
-          </select>
-        </label>
-        <label class="field">Chart size
-          <select id="chartSize">
-            <option value="small">Small</option>
-            <option value="medium" selected>Medium</option>
-            <option value="large">Large</option>
-          </select>
-        </label>
-      </div>
+    <!-- Results table -->
+    <div class="tabpanel" role="tabpanel" id="m-table" hidden>
+      <section id="tableSection">
+        <div class="section-head">
+          <h2>Results table</h2>
+          <button class="secondary" id="tableExport">Export table (CSV)</button>
+        </div>
+        <div class="row">
+          <label class="field">Simulation <select id="tableRun"></select></label>
+          <label class="field">Stand <select id="tableStand"></select></label>
+          <label class="field">From year <input type="number" id="yearFrom" min="1" placeholder="First" style="width:80px"></label>
+          <label class="field">To year <input type="number" id="yearTo" min="1" placeholder="Last" style="width:80px"></label>
+          <label class="field">Show every <select id="step"><option value="1">year</option><option value="5">5 years</option><option value="10" selected>10 years</option><option value="25">25 years</option></select></label>
+          <label class="field">Decimals <select id="decimals"><option value="auto">Auto</option><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
+        </div>
+        <details class="more" id="tableColsBox">
+          <summary>Edit columns</summary>
+          <div class="more-body table-cols" id="tableCols"></div>
+        </details>
+        <div class="table-wrap" style="margin-top:12px"><table class="results" id="results"></table></div>
+        <div class="small" id="tableNote" style="margin-top:6px"></div>
+      </section>
     </div>
-    <div class="chart-controls">
-      <div class="picker"><h3>Simulations</h3><div class="list" id="pickRuns"></div></div>
-      <div class="picker"><h3>Stands <span class="small" id="standCount"></span></h3>
-        <input type="text" id="standFilter" placeholder="Filter stands">
-        <div class="list" id="pickStands"></div></div>
-      <div class="picker"><h3>Stand totals</h3><div class="list" id="pickTotals"></div></div>
-      <div class="picker"><h3>By species</h3><div id="pickSpecies"></div></div>
-    </div>
-    <div id="chartNote" class="small"></div>
-    <div class="charts" id="charts"></div>
-  </section>
-
-  <!-- ---- Results table ---------------------------------------------------------- -->
-  <section id="tableSection" class="hidden">
-    <div class="section-head">
-      <h2>5. Results table</h2>
-      <button class="secondary" id="tableExport">Export table (CSV)</button>
-    </div>
-    <div class="row">
-      <label class="field">Simulation <select id="tableRun"></select></label>
-      <label class="field">Stand <select id="tableStand"></select></label>
-      <label class="field">From year <input type="number" id="yearFrom" min="1" placeholder="First" style="width:80px"></label>
-      <label class="field">To year <input type="number" id="yearTo" min="1" placeholder="Last" style="width:80px"></label>
-      <label class="field">Show every <select id="step"><option value="1">year</option><option value="5">5 years</option><option value="10" selected>10 years</option><option value="25">25 years</option></select></label>
-      <label class="field">Decimals <select id="decimals"><option value="auto">Auto</option><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
-    </div>
-    <details class="more" id="tableColsBox">
-      <summary>Edit columns</summary>
-      <div class="more-body table-cols" id="tableCols"></div>
-    </details>
-    <div class="table-wrap" style="margin-top:12px"><table class="results" id="results"></table></div>
-    <div class="small" id="tableNote" style="margin-top:6px"></div>
-  </section>
+  </div>
 
   <!-- ---- About ---------------------------------------------------------------------- -->
   <footer class="about">
@@ -189,7 +332,14 @@
         <p>webGYPSY runs the GYPSY growth and yield model (Alberta, May 2009 functions) in your browser.
           Your data stays on your computer: nothing is uploaded. The model is the C++ core of the
           <a href="https://github.com/benpanes/rGYPSY" target="_blank" rel="noopener">rGYPSY</a> R package,
-          which reproduces the GYPSY SAS program and was validated against it on 7,333 test stands.</p>
+          which reproduces the GYPSY SAS program and was validated against it on 7,333 test stands.
+          The single stand mode is modelled on the Excel GYPSY Yield Table Generator.</p>
+        <p><strong>Acknowledgements.</strong> GYPSY (Growth and Yield Projection System) was developed by
+          Dr. Shongming Huang and colleagues with the Government of Alberta. The model is described in
+          Huang, S., Meng, S.X. and Yang, Y. 2009. <cite>A Growth and Yield Projection System (GYPSY) for Natural and
+          Post-harvest Stands in Alberta</cite>. Alberta Sustainable Resource Development, Technical Report
+          Pub. No. T/216. Official information about GYPSY is on the
+          <a href="https://www.alberta.ca/growth-and-yield-projection-system" target="_blank" rel="noopener">Government of Alberta's GYPSY page</a>.</p>
         <p><strong>Disclaimer.</strong> This is an independent implementation of the published GYPSY functions.
           It is not produced or endorsed by the Government of Alberta. Results are provided as is, without
           warranty of any kind.</p>
@@ -197,17 +347,22 @@
           <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU General Public License, version 3</a>.
           Source: <a href="https://github.com/benpanes/webGYPSY" target="_blank" rel="noopener">github.com/benpanes/webGYPSY</a>.
           It includes <a href="https://sheetjs.com" target="_blank" rel="noopener">SheetJS</a> Community Edition 0.20.3
-          (© SheetJS LLC, Apache License 2.0) for reading spreadsheet files.</p>
+          (© SheetJS LLC, Apache License 2.0) for reading and writing spreadsheet files.</p>
       </div>
     </details>
     <div class="small" id="buildInfo">Development build</div>
   </footer>
 </main>
 
+<!-- Filled in for printing (single stand report) -->
+<div id="printReport" class="print-report" aria-hidden="true"></div>
+
 <script src="gypsy.js"></script>
 <script src="gypsy-api.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="chart.js"></script>
+<script src="ui.js"></script>
 <script src="app.js"></script>
+<script src="single.js"></script>
 </body>
 </html>
