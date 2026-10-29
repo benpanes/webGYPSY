@@ -1,0 +1,79 @@
+# Experimental build: on every push to dev, build the app with an
+# "Experimental build" banner and publish it on GitHub Pages at
+#   https://benpanes.github.io/webGYPSY/experimental/
+#
+# One-time setup in the repository settings:
+#   - Pages: Source "GitHub Actions"
+#   - Environments > github-pages > Deployment branches: allow "dev"
+
+name: Experimental build
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push replaces a queued one
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0        # tags, for the version shown in the footer
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.13       # as used for the local builds
+
+      - name: Build
+        shell: pwsh
+        run: ./build.ps1 -Channel Experimental
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/experimental
+          cp dist/gypsy.html _site/experimental/index.html
+          cat > _site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>webGYPSY</title>
+          <style>
+            body { font: 16px/1.5 system-ui, sans-serif; max-width: 40em; margin: 3em auto; padding: 0 16px; }
+          </style>
+          </head>
+          <body>
+          <h1>webGYPSY</h1>
+          <p>The GYPSY growth and yield model in your browser.</p>
+          <ul>
+            <li><a href="https://github.com/benpanes/webGYPSY/releases/latest">Latest release</a> (download and open the .html file)</li>
+            <li><a href="experimental/">Experimental build</a>: the version under development, which may change</li>
+          </ul>
+          </body>
+          </html>
+          EOF
+
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}experimental/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

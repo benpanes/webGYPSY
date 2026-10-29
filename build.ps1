@@ -6,6 +6,12 @@
 #
 # -sSINGLE_FILE embeds the WebAssembly in gypsy.js, so web/index.html also
 # works when opened straight from disk.
+#
+# -Channel names a pre-release build (e.g. -Channel Experimental): the page
+# title says so and a banner at the top of the app points to the stable
+# release.
+
+param([string]$Channel = "")
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -61,6 +67,19 @@ $dot = [char]0x00B7   # middle dot (non-ASCII text in this script would be misre
 $info = "Version $version $dot model rGYPSY $model $dot built $date"
 if (-not $html.Contains(">Development build<")) { throw "web/index.html has no build information placeholder" }
 $html = $html.Replace(">Development build<", ">$([Net.WebUtility]::HtmlEncode($info))<")
+
+if ($Channel) {
+  $name = [Net.WebUtility]::HtmlEncode($Channel)
+  if (-not $html.Contains("<title>GYPSY Growth Model</title>") -or -not $html.Contains("<main>")) {
+    throw "web/index.html has no title or <main> for the $Channel banner"
+  }
+  $html = $html.Replace("<title>GYPSY Growth Model</title>", "<title>GYPSY Growth Model ($name)</title>")
+  $banner = "<div class=""channel-banner"" role=""note""><strong>$name build.</strong> This is the version under development: " +
+            "features and results may change, and it may have errors. For a stable version, use the " +
+            "<a href=""https://github.com/benpanes/webGYPSY/releases/latest"" target=""_blank"" rel=""noopener"">latest release</a>.</div>"
+  $html = ([regex]"<main>").Replace($html, "<main>`n  $banner", 1)
+  $info = "$Channel $dot $info"
+}
 
 New-Item -ItemType Directory -Force dist | Out-Null
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot "dist/gypsy.html"), $html, (New-Object Text.UTF8Encoding $false))

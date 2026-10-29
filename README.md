@@ -12,6 +12,13 @@ Get `gypsy-vX.Y.Z.html` from the
 anywhere, and open it in a web browser by double-clicking. It is a single file
 that works offline; your data never leave your computer.
 
+### Experimental build
+
+The version under development (the `dev` branch) runs online at
+<https://benpanes.github.io/webGYPSY/experimental/>. It is rebuilt on every
+push to `dev` and shows an "Experimental build" banner: features and results
+may change, so use a release for published work.
+
 ## Modes
 
 - **Single stand** (the default) is modelled on the Excel GYPSY Yield Table
@@ -85,10 +92,18 @@ once per computer, then load it in each PowerShell session:
 
 This writes:
 
-- `web/gypsy.js` (about 175 KB), the model with the WebAssembly embedded, used
+- `web/gypsy.js` (about 190 KB), the model with the WebAssembly embedded, used
   by `web/index.html`.
-- `dist/gypsy.html` (about 190 KB), the whole app in one file. Users can
-  download it and open it by double-clicking; it works offline.
+- `dist/gypsy.html` (about 1.3 MB, most of it the spreadsheet library), the
+  whole app in one file. Users can download it and open it by
+  double-clicking; it works offline.
+
+`.uild.ps1 -Channel Experimental` adds a banner and title marking a
+pre-release build. The [Experimental build](.github/workflows/experimental.yml)
+workflow does this for each push to `dev` and publishes the result on GitHub
+Pages. It needs, once, in the repository settings: **Pages** > Source
+"GitHub Actions", and **Environments** > `github-pages` > Deployment branches
+allowing `dev`.
 
 ## Using the model from JavaScript
 
