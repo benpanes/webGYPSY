@@ -10,7 +10,7 @@ R package and the GYPSY SAS program.
 Get `gypsy-vX.Y.Z.html` from the
 [latest release](https://github.com/benpanes/webGYPSY/releases/latest), save it
 anywhere, and open it in a web browser by double-clicking. It is a single file
-that works offline; your data never leaves your computer.
+that works offline; your data never leave your computer.
 
 ## Modes
 
