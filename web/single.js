@@ -60,13 +60,31 @@
                   "age and age 50 (adjusted Lambeth equations, Luo and Thomas 2021); breast height site index follows from it.";
   const X_LABEL = "Stand age (years)";
 
-  const EXAMPLE = {
-    id: "Example mixedwood", standAge: "48", projectTo: "250", psflag: true, baflag: true,
-    kinds: { age: "T", ht: "ht", n: "n" },
-    spp: { AW: { age: "48", ht: "19.8", n: "1100", ps: "70", ba: "21.5" },
-           SW: { age: "31", ht: "9.6",  n: "450",  ps: "25", ba: "4.1" } },
-    util: {},
-  };
+  // Example stands (Load example menu): each shows a different way in
+  const EXAMPLES = [
+    { label: "Aspen and white spruce mixedwood", note: "Top height, density, stocking and basal area", form: {
+      id: "Example mixedwood", standAge: "48", projectTo: "250", psflag: true, baflag: true,
+      kinds: { age: "T", ht: "ht", n: "n" },
+      spp: { AW: { age: "48", ht: "19.8", n: "1100", ps: "70", ba: "21.5" },
+             SW: { age: "31", ht: "9.6",  n: "450",  ps: "25", ba: "4.1" } } } },
+    { label: "Pure aspen", note: "A young deciduous stand", form: {
+      id: "Example aspen", standAge: "", projectTo: "200", psflag: true, baflag: true,
+      kinds: { age: "T", ht: "ht", n: "n" },
+      spp: { AW: { age: "30", ht: "13.5", n: "2600", ps: "85", ba: "16" } } } },
+    { label: "Black spruce", note: "Initial density (N0) instead of density", form: {
+      id: "Example black spruce", standAge: "", projectTo: "250", psflag: true, baflag: true,
+      kinds: { age: "T", ht: "ht", n: "n0" },
+      spp: { SB: { age: "70", ht: "11.5", n: "3500", ps: "75", ba: "24" } } } },
+    { label: "Lodgepole pine plantation", note: "Site index at breast height age 50, no stocking or basal area", form: {
+      id: "Example pine plantation", standAge: "", projectTo: "150", psflag: false, baflag: false,
+      kinds: { age: "T", ht: "siB", n: "n" },
+      spp: { PL: { age: "12", ht: "18", n: "2000" } } } },
+    { label: "Improved white spruce plantation", note: "Tree improvement: three genetic worth scenarios", form: {
+      id: "Example improved spruce", standAge: "", projectTo: "200", psflag: false, baflag: false,
+      kinds: { age: "T", ht: "siB", n: "n" },
+      spp: { SW: { age: "15", ht: "17", n: "1600" } },
+      ti: true, tiv: { SW: { gw1: "5", gw2: "10", gw3: "15", selAge: "15" } } } },
+  ];
 
   // Stand total charts (the chart under the results, and the Charts tab)
   const GROUPS = [["con", "Conifer", 3], ["dec", "Deciduous", 1], ["all", "Total", 2]];
@@ -1176,7 +1194,17 @@
       S.live = true;
     } else selectTab("s-input");
   });
-  $("sExample").addEventListener("click", () => { setForm(EXAMPLE); changed(); });
+  for (const ex of EXAMPLES) {
+    const b = GypsyUI.button("", () => {
+      setForm(ex.form);
+      $("sExampleMenu").open = false;
+      changed();
+    }, "link");
+    b.type = "button";
+    b.append(Object.assign(document.createElement("span"), { textContent: ex.label }),
+             Object.assign(document.createElement("span"), { className: "menu-note", textContent: ex.note }));
+    $("sExampleList").appendChild(b);
+  }
   // Empty species rows (results follow, as for any input change)
   function clearSpecies(list) {
     for (const s of list) for (const f of FIELDS) $(`s_${f.key}_${s}`).value = "";
@@ -1195,7 +1223,9 @@
   $("sYieldKind").addEventListener("change", renderYield);
   $("sYieldStep").addEventListener("change", renderYield);
   // Close the export menu when clicking elsewhere
-  document.addEventListener("click", e => { if (!e.target.closest("#sExportMenu")) $("sExportMenu").open = false; });
+  document.addEventListener("click", e => {
+    for (const id of ["sExportMenu", "sExampleMenu"]) if (!e.target.closest("#" + id)) $(id).open = false;
+  });
 
   buildForm();
   setForm({});

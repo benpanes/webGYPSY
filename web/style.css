@@ -68,6 +68,8 @@ details.menu .menu-body { position: absolute; right: 0; top: calc(100% + 4px); z
   box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
 details.menu .menu-body button.link { text-align: left; color: var(--text); padding: 6px 8px; border-radius: 4px; }
 details.menu .menu-body button.link:hover:not(:disabled) { background: var(--accent-soft); }
+details.menu.menu-left .menu-body { left: 0; right: auto; min-width: min(340px, 90vw); }
+details.menu .menu-body .menu-note { display: block; color: var(--muted); font-size: 0.8rem; }
 
 /* ---- Single stand input ------------------------------------------------------- */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; margin: 10px 0 12px; }
