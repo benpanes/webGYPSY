@@ -56,7 +56,7 @@ h3.sub-head { font-size: 0.95rem; margin: 0 0 8px; }
 .tab-actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-bottom: 8px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 0 16px; }
 .cards.wide { grid-template-columns: repeat(auto-fit, minmax(min(540px, 100%), 1fr)); }
-.single-stale #s-summary, .single-stale #s-yield, .single-stale #s-charts { opacity: 0.55; }
+.single-stale #sResults, .single-stale #s-yield, .single-stale #s-charts { opacity: 0.55; }
 
 /* Export menu */
 details.menu { position: relative; }
@@ -91,6 +91,13 @@ td.warn input, .field.warn input { border-color: var(--warn-border); background:
                 justify-content: space-between; margin-bottom: 12px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end; }
 .hidden { display: none !important; }
+.ytg-table input:disabled { opacity: 0.45; cursor: default; }
+.scenario-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9em; }
+.scenario-pick[hidden] { display: none; }
+.menu-body .scenario-pick { padding: 4px 8px 8px; }
+.chart-pick:has(> [hidden]:only-child) { display: none; }
+#sSummaryInfo { margin: -6px 0 10px; }
+.small-switch button { padding: 4px 10px; font-size: 0.85rem; }
 
 label.field { display: flex; flex-direction: column; gap: 3px; font-size: 0.85rem; color: var(--muted); }
 label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; }
@@ -108,6 +115,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .msg { border-radius: 6px; padding: 8px 12px; margin: 8px 0 0; white-space: pre-wrap; font-size: 0.9rem; }
 .warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
 .err  { background: var(--err-bg);  border: 1px solid var(--err-border); }
+.info { background: var(--accent-soft); border: 1px solid var(--border); }
+.live-note { margin: 0 0 16px; }
 
 /* ---- Input ----------------------------------------------------------------- */
 .drop { border: 2px dashed var(--border); border-radius: 10px; padding: 22px 16px; text-align: center;
@@ -166,6 +175,8 @@ table.results th { font-weight: 600; color: var(--muted); vertical-align: bottom
 table.results th .unit { display: block; font-weight: 400; font-size: 0.8rem; color: var(--faint); }
 table.results th.group { text-align: center; border-bottom: 2px solid var(--border); color: var(--text); }
 #sQuickBox { min-height: 300px; }
+.quick-pick { margin-bottom: 8px; }
+.quick-pick .sep { width: 1px; align-self: stretch; background: var(--border); }
 
 /* ---- About ------------------------------------------------------------------- */
 footer.about { margin-top: 8px; padding: 0 4px; color: var(--muted); font-size: 0.88rem; }

@@ -18,13 +18,32 @@ that works offline; your data never leave your computer.
   Generator: enter the stand, utilization limits and one row per species
   group (total age, top height or site index, density or initial density, and
   percent stocking and basal area), with the Excel tool's validation rules.
-  Results are calculated attributes at the stand's age, merchantable MAI
+  Results, under the inputs, are calculated attributes at the stand's age, merchantable MAI
   culmination, a yield table, charts against stand age, an Excel workbook and
   a printable report. As in the Excel tool, conifer, deciduous and total MAI
   are over stand age and species MAI over the species' total age.
 - **Multiple stands** runs a table of stands from a CSV or spreadsheet, as
   `GYPSY_Sim()` does in R, with several simulations to compare, charts and a
   results table.
+
+Both modes can project improved seedlots (tree improvement), as
+`GYPSY_Sim_TI()` does in R: the SW and PL site index is raised for the
+seedlot's genetic worth for height at its selection age, using the age-age
+correlations of Luo and Thomas (2021). In single stand mode, press
+**Tree improvement** on the Stand tab and enter genetic worths (%) for up to
+three scenarios; selection age defaults to 15 and can be changed once a
+genetic worth is entered. The stand is projected unimproved and under each
+scenario: the results under the Stand tab compare them in a scenario table
+and a chart with every scenario overlapped (tick boxes choose conifer,
+deciduous, total and scenarios). The summary, MAI culmination, yield table,
+Charts tab and exports each have their own scenario menu.
+Tree improvement runs must use site index, or age and top height, from
+unimproved stands; a stand grown from improved seed already includes its
+genetic gain and should be run normally. The app warns about this whenever
+tree improvement is open. In multiple stands mode, tick
+**Tree improvement** before running and assign the genetic worth and
+selection age columns (`gw`, `sel_age`). A missing SW or PL genetic worth is
+treated as 0, with a warning.
 
 ## Layout
 
@@ -90,7 +109,8 @@ This writes:
 Options match `GYPSY_Sim()` in R: `sitype`, `agetype`, `simlen`, `psflag`,
 `baflag`, `bh`, `sh`, `iter`, `tol`, `detail`, and the merchantability
 standard as arrays of four values (AW, SB, SW, PL): `stumpHt`, `stumpDob`,
-`topDib`.
+`topDib`. With `ti: true` the run is `GYPSY_Sim_TI()`, using the input's
+`gw` and `sel_age` columns.
 
 Large inputs run in chunks of `chunkSize` stands (default 1000) to keep
 memory use bounded. For very large runs, pass `onChunk` to handle each
@@ -145,6 +165,13 @@ Official information about GYPSY is on the Government of Alberta's
 [Growth and Yield Projection System page](https://www.alberta.ca/growth-and-yield-projection-system).
 The single stand mode follows the layout of the Excel GYPSY Yield Table
 Generator (Alberta Sustainable Resource Development, 2010).
+
+The tree improvement adjustment follows section 2.4 of:
+
+Luo, D. and Thomas, B.R. 2021. An analysis of age-age correlations in white
+spruce and lodgepole pine and how it applies to the growth and yield
+projection system (GYPSY) in Alberta. Forest Ecology and Management 482:
+118865. https://doi.org/10.1016/j.foreco.2020.118865
 
 ## Licence
 

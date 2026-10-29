@@ -420,7 +420,7 @@
       const keep = [];
       state.rows.forEach((r, i) => { if (!isBlankRow(r)) keep.push(i); });
       if (!keep.length) throw new Error("The input table has no data rows.");
-      ({ input, warnings } = GypsyAPI.inputFromRows(keep.map(i => state.rows[i]), state.mapping));
+      ({ input, warnings } = GypsyAPI.inputFromRows(keep.map(i => state.rows[i]), state.mapping, { ti: $("tiflag").checked }));
       rowLabels = keep.map(i => i + 1);
     } catch (e) { message("runMessages", e.message, "err"); return; }
 
@@ -428,7 +428,7 @@
     // ticked; otherwise the defaults (shown beside the boxes) are used
     const age = $("showAge").checked;
     const options = {
-      simlen: num("simlen"), psflag: $("psflag").checked, baflag: $("baflag").checked,
+      simlen: num("simlen"), psflag: $("psflag").checked, baflag: $("baflag").checked, ti: $("tiflag").checked,
       sitype:   age ? $("sitype").value : "B",
       agetype:  age ? $("agetype").value : "T",
       ...merchCriteria(),
@@ -536,7 +536,8 @@
       const info = document.createElement("span");
       info.className = "small";
       info.textContent = `${run.result.standLabels.length} stands · ${o.simlen} years · ${merchText(o)} · ` +
-        `SI type ${o.sitype}, age type ${o.agetype} · stocking ${o.psflag ? "on" : "off"}, BA ${o.baflag ? "on" : "off"}`;
+        `SI type ${o.sitype}, age type ${o.agetype} · stocking ${o.psflag ? "on" : "off"}, BA ${o.baflag ? "on" : "off"}` +
+        (o.ti ? " · tree improvement" : "");
       const spacer = document.createElement("span");
       spacer.className = "spacer";
       const b1 = button("Export results (CSV)", () => download(GypsyAPI.toCSV(run.result.rows, run.result.standLabels), `${fileStem(run.name)}_yearly.csv`));

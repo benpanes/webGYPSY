@@ -24,7 +24,6 @@
     <div class="tab-bar">
       <nav class="tabs" role="tablist" aria-label="Single stand">
         <button type="button" role="tab" aria-controls="s-input">Stand</button>
-        <button type="button" role="tab" aria-controls="s-summary" disabled>Summary</button>
         <button type="button" role="tab" aria-controls="s-yield" disabled>Yield table</button>
         <button type="button" role="tab" aria-controls="s-charts" disabled>Charts</button>
       </nav>
@@ -34,6 +33,7 @@
         <details class="menu" id="sExportMenu">
           <summary class="secondary-btn">Export</summary>
           <div class="menu-body">
+            <label class="scenario-pick" hidden>Scenario to export <select data-pick="export"></select></label>
             <button class="link" id="sXlsx" disabled>Excel workbook (.xlsx)</button>
             <button class="link" id="sCsv" disabled>Yearly results (CSV)</button>
             <button class="link" id="sPrint" disabled>Print report or save as PDF</button>
@@ -50,9 +50,6 @@
           <h2>Stand</h2>
           <div class="form-grid">
             <label class="field">Stand ID <input type="text" id="sStandId" placeholder="New stand"></label>
-            <label class="field">Stand type
-              <select id="sStandType"><option value="">Not given</option><option>Natural</option><option>Regenerated</option></select>
-            </label>
             <label class="field">Stand age (years) <input type="number" id="sStandAge" min="1" step="1" placeholder="Leading age"></label>
             <label class="field">Project to stand age <input type="number" id="sProjectTo" value="250" min="20" max="400" step="10"></label>
           </div>
@@ -61,12 +58,20 @@
             <label class="check"><input type="checkbox" id="sBaflag" checked> Adjust to observed basal area</label>
           </div>
           <p class="small hint">Stand age defaults to the oldest species' total age.</p>
+          <button class="secondary" id="sTiShow" aria-controls="sTiCard" aria-expanded="false">Tree improvement</button>
         </section>
 
         <section class="card">
-          <h2>Utilization limits</h2>
-          <table class="ytg-table" id="sUtil"></table>
-          <p class="small hint">Blank cells use the defaults shown.</p>
+          <div class="section-head">
+            <h2>Utilization limits</h2>
+            <div class="mode-switch small-switch" id="sUtilMode" role="radiogroup" aria-label="Utilization limits apply to">
+              <button type="button" role="radio" data-util="all" aria-checked="true">Universal</button>
+              <button type="button" role="radio" data-util="spp" aria-checked="false">Species-specific</button>
+            </div>
+          </div>
+          <div class="form-grid" id="sUtilAll"></div>
+          <table class="ytg-table" id="sUtil" hidden></table>
+          <p class="small hint" id="sUtilHint">Apply to every species. Blank boxes use the defaults shown.</p>
         </section>
       </div>
 
@@ -79,30 +84,56 @@
         <div id="sChecks" class="checks-list"></div>
         <div class="row" style="margin-top:12px">
           <button class="secondary" id="sExample">Load example</button>
-          <button class="secondary" id="sClear">Clear</button>
+          <button class="secondary" id="sClear">Clear all</button>
         </div>
       </section>
-    </div>
 
-    <!-- Summary -->
-    <div class="tabpanel" role="tabpanel" id="s-summary" hidden>
-      <section class="card">
-        <div class="section-head"><h2 id="sSummaryTitle">Summary</h2><span class="small" id="sSummaryInfo"></span></div>
-        <h3 class="sub-head">Calculated attributes at the stand's age</h3>
-        <div class="table-wrap"><table class="results" id="sCalc"></table></div>
+      <section class="card" id="sTiCard" hidden>
+        <div class="section-head">
+          <h2>Tree improvement</h2>
+          <button class="link" id="sTiHide" title="Hide and project the stand unimproved">Disable</button>
+        </div>
+        <table class="ytg-table" id="sTiTable"></table>
+        <p class="small hint">Up to three genetic worth scenarios; the stand is also always projected unimproved for comparison.
+          Raises the SW and PL site index for the genetic worth for height at the selection age (Luo and Thomas 2021).</p>
       </section>
-      <div class="cards wide">
+
+      <!-- Results (after a run) -->
+      <div id="sResults" hidden>
+        <div class="msg info live-note">Results update in real time: changing any input above re-runs the stand and updates the results, yield table and charts.</div>
+        <div class="cards wide">
+          <section class="card">
+            <div class="section-head">
+              <h3 class="sub-head">Chart</h3>
+              <select id="sQuickChart" aria-label="Chart measure"></select>
+            </div>
+            <div class="checks quick-pick" id="sQuickPick"></div>
+            <div id="sQuickBox"></div>
+          </section>
+          <section class="card">
+            <div class="section-head">
+              <h3 class="sub-head">Merchantable MAI culmination</h3>
+              <label class="scenario-pick" hidden>Scenario <select data-pick="culm"></select></label>
+            </div>
+            <div class="table-wrap"><table class="results" id="sCulm"></table></div>
+            <p class="small hint" id="sCulmNote"></p>
+          </section>
+        </div>
         <section class="card">
-          <h3 class="sub-head">Merchantable MAI culmination</h3>
-          <div class="table-wrap"><table class="results" id="sCulm"></table></div>
-          <p class="small hint" id="sCulmNote"></p>
-        </section>
-        <section class="card">
-          <div class="section-head">
-            <h3 class="sub-head">Quick chart</h3>
-            <select id="sQuickChart" aria-label="Quick chart"></select>
+          <div class="section-head"><h2 id="sSummaryTitle">Summary</h2><label class="scenario-pick" hidden>Scenario <select data-pick="sum"></select></label></div>
+          <p class="small" id="sSummaryInfo"></p>
+          <h3 class="sub-head">Calculated attributes at the stand's age</h3>
+          <div class="table-wrap"><table class="results" id="sCalc"></table></div>
+          <div id="sTiBox" hidden>
+            <h3 class="sub-head">Tree improvement</h3>
+            <div class="table-wrap"><table class="results" id="sTiCalc"></table></div>
+            <p class="small" id="sTiNote"></p>
           </div>
-          <div id="sQuickBox"></div>
+          <div id="sScenBox" hidden>
+            <h3 class="sub-head">Scenario comparison</h3>
+            <div class="table-wrap"><table class="results" id="sScenCalc"></table></div>
+            <p class="small" id="sScenNote"></p>
+          </div>
         </section>
       </div>
     </div>
@@ -117,6 +148,7 @@
               <select id="sYieldKind"><option value="yield">Merchantable yield</option><option value="detail">By species</option></select>
             </label>
             <label class="field">Every <select id="sYieldStep"><option value="1">year</option><option value="5">5 years</option><option value="10" selected>10 years</option><option value="20">20 years</option></select></label>
+            <label class="scenario-pick" hidden>Scenario <select data-pick="yield"></select></label>
             <button class="secondary" id="sYieldCsv">Export table (CSV)</button>
           </div>
         </div>
@@ -128,6 +160,7 @@
     <!-- Charts -->
     <div class="tabpanel" role="tabpanel" id="s-charts" hidden>
       <section class="card">
+        <div class="row chart-pick"><label class="scenario-pick" hidden>Scenarios <select data-pick="chart"></select></label></div>
         <div id="sChartMessages"></div>
         <div class="charts" id="sCharts"></div>
       </section>
@@ -219,6 +252,7 @@
         <div class="row" style="margin-top:12px">
           <label class="check"><input type="checkbox" id="psflag" checked> Use percent stocking</label>
           <label class="check"><input type="checkbox" id="baflag" checked> Use basal area</label>
+          <label class="check"><input type="checkbox" id="tiflag"> Tree improvement (genetic worth and selection age columns)</label>
         </div>
 
         <!-- Unticked, these use the defaults shown beside them -->
@@ -340,6 +374,11 @@
           Post-harvest Stands in Alberta</cite>. Alberta Sustainable Resource Development, Technical Report
           Pub. No. T/216. Official information about GYPSY is on the
           <a href="https://www.alberta.ca/growth-and-yield-projection-system" target="_blank" rel="noopener">Government of Alberta's GYPSY page</a>.</p>
+        <p><strong>Tree improvement.</strong> The site index adjustment for improved seedlots follows section 2.4 of
+          Luo, D. and Thomas, B.R. 2021. <cite>An analysis of age-age correlations in white spruce and lodgepole pine
+          and how it applies to the growth and yield projection system (GYPSY) in Alberta</cite>. Forest Ecology and
+          Management 482: 118865.
+          <a href="https://doi.org/10.1016/j.foreco.2020.118865" target="_blank" rel="noopener">doi:10.1016/j.foreco.2020.118865</a>.</p>
         <p><strong>Disclaimer.</strong> This is an independent implementation of the published GYPSY functions.
           It is not produced or endorsed by the Government of Alberta. Results are provided as is, without
           warranty of any kind.</p>

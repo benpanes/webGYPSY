@@ -12,10 +12,11 @@
 //
 // Input arrays (one value per row; missing values must be NaN, not null):
 //   stand (integer codes 0 .. n_stands - 1), standLabel (one per code),
-//   standAge, spp, n, si, age, ht, ps, ba
+//   standAge, spp, n, si, age, ht, ps, ba, and with ti: gw, selAge
 // Options (all optional, defaults as in GYPSY_Sim() in R):
 //   sitype, agetype, simlen, psflag, baflag, bh, sh, iter, tol, detail,
-//   stumpHt, stumpDob, topDib (arrays of 4, AW SB SW PL)
+//   stumpHt, stumpDob, topDib (arrays of 4, AW SB SW PL),
+//   ti (true: tree improvement, gypsy::SimTI, with input gw and selAge)
 // ---------------------------------------------------------------------------
 
 using emscripten::val;
@@ -77,7 +78,15 @@ val run_sim(val input, val options) {
     per_spp("stumpDob", opt.merch.stump_dob);
     per_spp("topDib",   opt.merch.top_dib);
 
-    gypsy::SimResult res = gypsy::Sim(in, opt);
+    gypsy::SimResult res;
+    if (has("ti") && options["ti"].as<bool>()) {
+      gypsy::TIInput ti;
+      ti.gw      = num(input["gw"]);
+      ti.sel_age = num(input["selAge"]);
+      res = gypsy::SimTI(in, ti, opt);
+    } else {
+      res = gypsy::Sim(in, opt);
+    }
 
     val warnings = val::array();
     for (const std::string& w : res.warnings) warnings.call<void>("push", w);

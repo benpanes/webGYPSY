@@ -14,6 +14,12 @@
 //   - piece size is merchantable stems / merchantable volume (trees/m³)
 //   - density can be entered as initial density (N0); the observed density
 //     that gives that N0 is found by search
+//
+// Tree improvement (an improved seedlot): SW and PL site index is raised for
+// genetic worth at a selection age (Luo and Thomas 2021). Up to three
+// genetic worth scenarios are projected, with the unimproved stand always
+// projected too. Charts overlap them; each table, the Charts tab and the
+// exports have their own scenario menu.
 // ---------------------------------------------------------------------------
 
 (function () {
@@ -41,21 +47,45 @@
     { key: "topDib",   label: "Top DIB (cm)",     def: 10,  step: "0.5" },
     { key: "stumpHt",  label: "Stump height (m)", def: 0.3, step: "0.05" },
   ];
+  const TI_SPP = ["SW", "PL"];   // species with age-age correlations
+  const SCENARIOS = [1, 2, 3];
+  const TI_FIELDS = [
+    ...SCENARIOS.map(k => ({ key: `gw${k}`, label: `Scenario ${k}`, aria: `scenario ${k} genetic worth (%)`, step: "0.1" })),
+    { key: "selAge", label: "Selection age (years)", aria: "selection age (years)", step: "1", def: "15" },
+  ];
+  const TI_WARN = "Tree improvement runs must use site index, or age and top height, from unimproved stands. " +
+                  "If the inputs were measured in a stand grown from improved seed, its genetic gain is already in them: " +
+                  "disable tree improvement and run the stand normally.";
+  const TI_NOTE = "Site index at total age 50 is raised by genetic worth × the age-age correlation between the selection " +
+                  "age and age 50 (adjusted Lambeth equations, Luo and Thomas 2021); breast height site index follows from it.";
   const X_LABEL = "Stand age (years)";
 
   const EXAMPLE = {
-    id: "Example mixedwood", type: "Natural", standAge: "48", projectTo: "250", psflag: true, baflag: true,
+    id: "Example mixedwood", standAge: "48", projectTo: "250", psflag: true, baflag: true,
     kinds: { age: "T", ht: "ht", n: "n" },
     spp: { AW: { age: "48", ht: "19.8", n: "1100", ps: "70", ba: "21.5" },
            SW: { age: "31", ht: "9.6",  n: "450",  ps: "25", ba: "4.1" } },
     util: {},
   };
 
+  // Stand total charts (the chart under the results, and the Charts tab)
+  const GROUPS = [["con", "Conifer", 3], ["dec", "Deciduous", 1], ["all", "Total", 2]];
+  const GROUP_MEASURES = [
+    ["mvol_",   "Merchantable volume", "m³/ha"],
+    ["mai_sa_", "Merchantable MAI (stand age)", "m³/ha/yr"],
+    ["tvol_",   "Total volume", "m³/ha"],
+  ];
+
   const S = {
     gypsy: null,
     kinds: { age: "T", ht: "ht", n: "n" },
     result: null,      // last successful run (see derive())
     live: false,       // after the first run, re-run as inputs change
+    set: null,         // projections of the last run: unimproved, then scenarios
+    // Projection shown on each card, by name; "all" overlaps them (charts)
+    pick: { sum: null, culm: null, yield: null, chart: "all", export: null },
+    groupsShown: new Set(["con", "dec"]),   // chart under the results
+    scenariosHidden: new Set(),             //   (scenario names)
   };
 
   // ---- Form -----------------------------------------------------------------------
@@ -78,6 +108,7 @@
       } else th.textContent = f.label;
       hr.appendChild(th);
     }
+    hr.appendChild(document.createElement("th"));   // above the clear buttons
     const body = t.createTBody();
     for (const s of SPECIES) {
       const tr = body.insertRow();
@@ -91,6 +122,49 @@
         inp.setAttribute("aria-label", `${SPP_NAMES[s]}, ${f.label || f.kinds[S.kinds[f.key]]}`);
         tr.insertCell().appendChild(inp);
       }
+      const clear = GypsyUI.button("Clear", () => { clearSpecies([s]); $(`s_${FIELDS[0].key}_${s}`).focus(); }, "link");
+      clear.type = "button";
+      clear.setAttribute("aria-label", `Clear ${SPP_NAMES[s]}`);
+      tr.insertCell().appendChild(clear);
+    }
+
+    const ti = $("sTiTable");
+    const tig = ti.createTHead().insertRow();
+    for (const [text, span] of [["", 1], ["Genetic worth (%)", SCENARIOS.length], ["", 1]]) {
+      const th = document.createElement("th");
+      th.textContent = text;
+      th.colSpan = span;
+      tig.appendChild(th);
+    }
+    const tih = ti.tHead.insertRow();
+    for (const text of ["Species", ...TI_FIELDS.map(x => x.label)]) {
+      const th = document.createElement("th");
+      th.textContent = text;
+      tih.appendChild(th);
+    }
+    const tib = ti.createTBody();
+    for (const s of TI_SPP) {
+      const tr = tib.insertRow();
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = s;
+      th.title = SPP_NAMES[s];
+      tr.appendChild(th);
+      for (const x of TI_FIELDS) {
+        const inp = document.createElement("input");
+        Object.assign(inp, { type: "number", step: x.step, min: "0", id: `s_${x.key}_${s}` });
+        inp.setAttribute("aria-label", `${SPP_NAMES[s]}, ${x.aria}`);
+        tr.insertCell().appendChild(inp);
+      }
+    }
+
+    for (const x of UTIL) {
+      const l = document.createElement("label");
+      l.className = "field";
+      const inp = document.createElement("input");
+      Object.assign(inp, { type: "number", step: x.step, min: "0", placeholder: String(x.def), id: `s_${x.key}_all` });
+      l.append(x.label, inp);
+      $("sUtilAll").appendChild(l);
     }
 
     const u = $("sUtil");
@@ -120,10 +194,17 @@
   // Form -> plain object of strings (also what is remembered between visits)
   function formState() {
     const o = {
-      id: $("sStandId").value, type: $("sStandType").value, standAge: $("sStandAge").value,
+      id: $("sStandId").value, standAge: $("sStandAge").value,
       projectTo: $("sProjectTo").value, psflag: $("sPsflag").checked, baflag: $("sBaflag").checked,
-      kinds: { ...S.kinds }, spp: {}, util: {},
+      kinds: { ...S.kinds }, spp: {}, util: {}, utilAll: {}, utilBySpp: utilSpp(),
+      ti: !$("sTiCard").hidden, tiv: {},
     };
+    for (const x of UTIL) if ($(`s_${x.key}_all`).value !== "") o.utilAll[x.key] = $(`s_${x.key}_all`).value;
+    for (const s of TI_SPP) {
+      const t = {};
+      for (const x of TI_FIELDS) if ($(`s_${x.key}_${s}`).value !== "") t[x.key] = $(`s_${x.key}_${s}`).value;
+      if (Object.keys(t).length) o.tiv[s] = t;
+    }
     for (const s of SPECIES) {
       const r = {};
       for (const f of FIELDS) if ($(`s_${f.key}_${s}`).value !== "") r[f.key] = $(`s_${f.key}_${s}`).value;
@@ -137,7 +218,6 @@
 
   function setForm(o) {
     $("sStandId").value = o.id || "";
-    $("sStandType").value = o.type || "";
     $("sStandAge").value = o.standAge || "";
     $("sProjectTo").value = o.projectTo || "250";
     $("sPsflag").checked = o.psflag !== false;
@@ -148,6 +228,62 @@
       for (const f of FIELDS) $(`s_${f.key}_${s}`).value = o.spp?.[s]?.[f.key] ?? "";
       for (const x of UTIL) $(`s_${x.key}_${s}`).value = o.util?.[s]?.[x.key] ?? "";
     }
+    for (const x of UTIL) $(`s_${x.key}_all`).value = o.utilAll?.[x.key] ?? "";
+    // Forms saved before the switch had only species limits
+    setUtilSpp(o.utilBySpp ?? Object.keys(o.util || {}).length > 0);
+    for (const s of TI_SPP) {
+      const t = { ...o.tiv?.[s] };
+      if (t.gw != null && t.gw1 == null) t.gw1 = t.gw;   // saved before scenarios
+      for (const x of TI_FIELDS) $(`s_${x.key}_${s}`).value = t[x.key] ?? x.def ?? "";
+    }
+    showTi(!!o.ti);
+  }
+
+  // Utilization limits: universal (one set for every species) or
+  // species-specific (a set per species; blank cells use the universal
+  // limits, shown greyed)
+  const utilSpp = () => $("sUtilMode").querySelector('[data-util="spp"]').getAttribute("aria-checked") === "true";
+  function setUtilSpp(on) {
+    for (const b of $("sUtilMode").querySelectorAll("[data-util]"))
+      b.setAttribute("aria-checked", (b.dataset.util === "spp") === on);
+    utilBySpp();
+  }
+  function utilBySpp() {
+    const on = utilSpp();
+    $("sUtil").hidden = !on;
+    $("sUtilAll").hidden = on;
+    $("sUtilHint").textContent = on
+      ? "Blank cells use the universal limits, shown greyed."
+      : "Apply to every species. Blank boxes use the defaults shown.";
+    for (const x of UTIL) {
+      const shared = $(`s_${x.key}_all`).value || String(x.def);
+      for (const s of SPECIES) $(`s_${x.key}_${s}`).placeholder = shared;
+    }
+  }
+
+  // The tree improvement card: shown, the stand is an improved seedlot;
+  // hidden, it is projected unimproved (entries are kept)
+  function showTi(on) {
+    $("sTiCard").hidden = !on;
+    $("sTiShow").hidden = on;
+    $("sTiShow").setAttribute("aria-expanded", on);
+    selAgeEnabled();
+  }
+
+  // Selection age only applies once a genetic worth is entered
+  function selAgeEnabled() {
+    for (const s of TI_SPP) $(`s_selAge_${s}`).disabled = SCENARIOS.every(k => $(`s_gw${k}_${s}`).value === "");
+  }
+
+  // Projections: unimproved (k 0), then each scenario with a genetic worth
+  // for a species in the stand
+  function scenarioList(o) {
+    const list = [{ k: 0, name: o.ti ? "Unimproved" : "" }];
+    if (!o.ti) return list;
+    for (const k of SCENARIOS)
+      if (TI_SPP.some(s => { const g = Number(o.tiv[s]?.[`gw${k}`]); return isPresent(o, s) && Number.isFinite(g) && g !== 0; }))
+        list.push({ k, name: `Scenario ${k}` });
+    return list;
   }
 
   // ---- Checks -------------------------------------------------------------------------
@@ -213,15 +349,52 @@
     }
     if (!present) add("s_age_AW", "err", "Fill in at least one species.");
 
-    for (const s of SPECIES) {
+    if (!$("sTiCard").hidden) {
+      add("sTiCard", "warn", TI_WARN);   // shown on the Species card only
+      let improved = 0;
+      for (const s of TI_SPP) {
+        const id = k => `s_${k}_${s}`;
+        const sel = val(id("selAge"));
+        const inStand = FIELDS.some(f => $(`s_${f.key}_${s}`).value !== "");
+        const gws = SCENARIOS.map(k => {
+          const gw = val(id(`gw${k}`));
+          if (gw === "bad") add(id(`gw${k}`), "err", `${sppLabel(s)}: scenario ${k} genetic worth is not a number.`);
+          else if (inStand && (gw < 0 || gw > 30)) add(id(`gw${k}`), "warn", `${sppLabel(s)}: scenario ${k} genetic worth is usually between 0 and 30%.`);
+          return gw;
+        });
+        if (sel === "bad") add(id("selAge"), "err", `${sppLabel(s)}: selection age is not a number.`);
+        const any = gws.some(g => Number.isFinite(g) && g !== 0);
+        if (!inStand) {
+          if (gws.some(Number.isFinite)) add(id("gw1"), "warn", `${sppLabel(s)}: genetic worth is given but ${s} is not in the stand.`);
+          continue;
+        }
+        if (!gws.some(g => Number.isFinite(g) || g === "bad")) {
+          add(id("gw1"), "warn", `${sppLabel(s)}: no genetic worth given; projected unimproved in every scenario.`);
+          continue;
+        }
+        if (any) {
+          improved++;
+          if (!Number.isFinite(sel) && sel !== "bad") add(id("selAge"), "err", `${sppLabel(s)}: selection age is needed with a genetic worth.`);
+          else if (sel <= 0) add(id("selAge"), "err", `${sppLabel(s)}: selection age must be more than 0.`);
+          else if (sel > 50) add(id("selAge"), "warn", `${sppLabel(s)}: selection age is over 50, the site index age.`);
+        }
+      }
+      if (!improved && present) add("s_gw1_SW", "warn", "Tree improvement is open, but no scenario has a genetic worth for SW or PL in the stand; only the unimproved stand is projected.");
+    }
+
+    // Shared limits, then each species' (only while switched on)
+    const shared = {};
+    for (const who of ["all", ...(utilSpp() ? SPECIES : [])]) {
+      const name = who === "all" ? "Utilization" : `${who} utilization`;
       const u = {};
       for (const x of UTIL) {
-        u[x.key] = val(`s_${x.key}_${s}`);
-        if (u[x.key] === "bad") add(`s_${x.key}_${s}`, "err", `${s} utilization: not a number.`);
-        else if (Number.isNaN(u[x.key])) u[x.key] = x.def;
+        u[x.key] = val(`s_${x.key}_${who}`);
+        if (u[x.key] === "bad") add(`s_${x.key}_${who}`, "err", `${name}: not a number.`);
+        else if (Number.isNaN(u[x.key])) u[x.key] = who === "all" ? x.def : shared[x.key];
       }
-      if (u.stumpDob <= u.topDib) add(`s_stumpDob_${s}`, "err", `${s} utilization: stump DOB must be more than top DIB.`);
-      if (u.stumpHt < 0.1 || u.stumpHt > 0.3) add(`s_stumpHt_${s}`, "err", `${s} utilization: stump height must be between 0.1 and 0.3 m.`);
+      if (who === "all") Object.assign(shared, u);
+      if (u.stumpDob <= u.topDib) add(`s_stumpDob_${who}`, "err", `${name}: stump DOB must be more than top DIB.`);
+      if (u.stumpHt < 0.1 || u.stumpHt > 0.3) add(`s_stumpHt_${who}`, "err", `${name}: stump height must be between 0.1 and 0.3 m.`);
     }
     return out;
   }
@@ -267,7 +440,8 @@
   // ---- Running ---------------------------------------------------------------------
   const isPresent = (o, s) => !!o.spp[s];
 
-  function modelInput(o, standAge, nOverride = {}) {
+  // k: tree improvement scenario (0 unimproved)
+  function modelInput(o, standAge, nOverride = {}, k = 0) {
     const present = SPECIES.filter(s => isPresent(o, s));
     const num = x => (x == null || x === "" ? NaN : Number(x));
     const si = S.kinds.ht !== "ht";
@@ -283,14 +457,19 @@
         ht:  present.map(s => (si ? NaN : num(o.spp[s].ht))),
         ps:  present.map(s => num(o.spp[s].ps)),
         ba:  present.map(s => num(o.spp[s].ba)),
+        // In a scenario, a missing SW or PL genetic worth is 0
+        gw:      present.map(s => (k && TI_SPP.includes(s) ? (o.tiv[s]?.[`gw${k}`] != null ? Number(o.tiv[s][`gw${k}`]) : 0) : NaN)),
+        sel_age: present.map(s => (k && TI_SPP.includes(s) ? num(o.tiv[s]?.selAge) : NaN)),
       },
     };
   }
 
   function utilOptions(o) {
     const out = {};
-    for (const x of UTIL)
-      out[x.key] = SPECIES.map(s => (o.util[s]?.[x.key] != null ? Number(o.util[s][x.key]) : x.def));
+    for (const x of UTIL) {
+      const shared = o.utilAll?.[x.key] != null ? Number(o.utilAll[x.key]) : x.def;
+      out[x.key] = SPECIES.map(s => (o.utilBySpp && o.util[s]?.[x.key] != null ? Number(o.util[s][x.key]) : shared));
+    }
     return out;
   }
 
@@ -301,11 +480,11 @@
   // density changes (the conifers' N0 also depends on aspen density).
   // Observed density is at most N0; very low densities give no N0, which
   // counts as too low.
-  function solveN0(o, opts) {
+  function solveN0(o, opts, k = 0) {
     const target = {};
     for (const s of SPECIES) if (isPresent(o, s)) target[s] = Number(o.spp[s].n);
     const n = { ...target };
-    const den0 = s => initValues(GypsyAPI.run(S.gypsy, modelInput(o, 100, n).input, { ...opts, simlen: 1 }))[`${lc(s)}_den0`];
+    const den0 = s => initValues(GypsyAPI.run(S.gypsy, modelInput(o, 100, n, k).input, { ...opts, simlen: 1, ti: k > 0 }))[`${lc(s)}_den0`];
     for (let sweep = 0; sweep < 20; sweep++) {
       let moved = 0;
       for (const s of Object.keys(target)) {
@@ -345,6 +524,7 @@
       const t0 = performance.now();
       const nObs = S.kinds.n === "n0" ? solveN0(o, opts) : {};
       // The leading total age, for the default stand age and the run length
+      // (tree improvement doesn't change it)
       const first = GypsyAPI.run(S.gypsy, modelInput(o, 100, nObs).input, { ...opts, simlen: 1 });
       const i0 = initValues(first);
       const tmax = i0.totage_max;
@@ -353,23 +533,34 @@
       const to = Number(o.projectTo);
       // Stand age in year k (1-based) is totage_0 + k - 1 + (stand age - leading age)
       const simlen = Math.max(1, Math.ceil(to - (standAge - tmax) - i0.totage_0 + 1 + 1e-9));
-      const { present, input } = modelInput(o, standAge, nObs);
-      const res = GypsyAPI.run(S.gypsy, input, { ...opts, simlen });
-      const D = derive(o, present, standAge, tmax, to, res, nObs);
-      D.ms = performance.now() - t0;
+      // Unimproved, then each tree improvement scenario
+      const warnings = new Set();
+      const set = scenarioList(o).map(sc => {
+        const n = sc.k && S.kinds.n === "n0" ? solveN0(o, opts, sc.k) : nObs;
+        const { present, input } = modelInput(o, standAge, n, sc.k);
+        const res = GypsyAPI.run(S.gypsy, input, { ...opts, simlen, ti: sc.k > 0 });
+        for (const w of res.warnings) warnings.add(w);
+        return Object.assign(derive(o, present, standAge, tmax, to, res, n), { scenario: sc });
+      });
+      for (const D of set) {
+        D.set = set;
+        if (sc(D)) D.label += ` – ${sc(D)}`;
+      }
+      const ms = performance.now() - t0;
 
-      const after = checkAfter(D);
+      const after = checkAfter(set[0]);
       showChecks([...list, ...after]);
       if (after.some(c => c.level === "err")) {
         $("sStatus").textContent = "Fix the errors in the Stand tab to run";
         markStale(true);
         return false;
       }
-      for (const w of res.warnings) message("sMessages", w, "warn");
-      S.result = D;
+      for (const w of warnings) message("sMessages", w, "warn");
+      S.set = set;
       markStale(false);
-      render(D);
-      $("sStatus").textContent = `Projected to stand age ${to} in ${D.ms < 1000 ? D.ms.toFixed(0) + " ms" : (D.ms / 1000).toFixed(1) + " s"}`;
+      fillScenarios();
+      render();
+      $("sStatus").textContent = `Projected ${set.length > 1 ? set.length + " scenarios " : ""}to stand age ${to} in ${ms < 1000 ? ms.toFixed(0) + " ms" : (ms / 1000).toFixed(1) + " s"}`;
       return true;
     } catch (e) {
       message("sMessages", e.message, "err");
@@ -379,9 +570,42 @@
     }
   }
 
+  // Name of a result's scenario ("" without tree improvement)
+  const sc = D => D.scenario.name;
+
+  // The projection a card shows: its pick if that is still there, else the
+  // first scenario. Charts can show all ("all": returns null).
+  function picked(card) {
+    const set = S.set;
+    if (card === "chart" && S.pick.chart === "all") return null;
+    return set.find(D => sc(D) === S.pick[card]) || set[Math.min(1, set.length - 1)];
+  }
+
+  // Scenario menus on the cards they affect, shown with more than one
+  // projection
+  function fillScenarios() {
+    const set = S.set || [];
+    for (const sel of document.querySelectorAll("#mode-single select[data-pick]")) {
+      const card = sel.dataset.pick;
+      sel.innerHTML = "";
+      if (card === "chart") sel.add(new Option("All, overlapped", "all"));
+      for (const D of set) sel.add(new Option(sc(D) + scenarioGw(D), sc(D)));
+      if (set.length) sel.value = card === "chart" && S.pick.chart === "all" ? "all" : sc(picked(card));
+      sel.parentElement.hidden = set.length < 2;
+    }
+  }
+
+  // " (SW 10%, PL 5%)" for a scenario
+  function scenarioGw(D) {
+    if (!D.scenario.k) return "";
+    const parts = D.improved.map(s => `${s} ${fmt(D.init[`${lc(s)}_gw`], 1)}%`);
+    return parts.length ? ` (${parts.join(", ")})` : "";
+  }
+
   function markStale(stale) {
-    const has = !!S.result;
-    for (const id of ["s-summary", "s-yield", "s-charts"]) enableTab(id, has);
+    const has = !!S.set;
+    for (const id of ["s-yield", "s-charts"]) enableTab(id, has);
+    $("sResults").hidden = !has;
     for (const id of ["sXlsx", "sCsv", "sPrint"]) $(id).disabled = !has;
     document.body.classList.toggle("single-stale", has && stale);
     if (has && stale) message("sMessages", "The results shown are for the previous inputs.", "warn");
@@ -416,7 +640,9 @@
     const obs = n => all[n][rObs];
 
     const groups = { con: present.some(s => CONIFERS.includes(s)), dec: present.includes("AW") };
-    return { form, present, standAge, tmax, to, res, col, len, init, obs, nObs, groups,
+    // Species whose site index was adjusted
+    const improved = present.filter(s => TI_SPP.includes(s) && Number.isFinite(init[`${lc(s)}_gw`]) && init[`${lc(s)}_gw`] !== 0);
+    return { form, present, standAge, tmax, to, res, col, len, init, obs, nObs, groups, improved,
              baflag: form.baflag, label: form.id.trim() || "New stand" };
   }
 
@@ -466,6 +692,46 @@
               fmt(i[`${x}_den0`], 0), fmt(i[`${x}_sdf`], 1), fmt(i[`${x}_psi`], 1)];
     });
     return { head, rows };
+  }
+
+  // Tree improvement: genetic worth, age-age correlation and site index
+  // before and after, one row per improved species
+  function tiTable(D) {
+    const head = ["Species", ["Genetic worth", "%"], ["Selection age", "years"], ["Age-age correlation", ""],
+                  ["SI, BH age 50, unimproved", "m"], ["SI, BH age 50, improved", "m"],
+                  ["SI, total age 50, unimproved", "m"], ["SI, total age 50, improved", "m"]];
+    const values = D.improved.map(s => {
+      const x = lc(s), i = D.init;
+      return [s, i[`${x}_gw`], i[`${x}_sel_age`], i[`${x}_aacor`], i[`${x}_si_bh_base`], i[`${x}_si_bh`], i[`${x}_si_t_base`], i[`${x}_si_t`]];
+    });
+    const digits = [null, 1, 0, 3, 2, 2, 2, 2];
+    return { head, values, rows: values.map(r => r.map((v, j) => (j ? fmt(v, digits[j]) : `${v} – ${SPP_NAMES[v]}`))) };
+  }
+
+  // Total merchantable MAI culmination (stand age), and the volume there
+  function totalCulmination(D) {
+    const m = D.col.mai_sa_all;
+    let k = -1;
+    for (let r = 0; r < m.length; r++) if (Number.isFinite(m[r]) && (k < 0 || m[r] > m[k])) k = r;
+    return k < 0 ? { mai: NaN, age: NaN, vol: NaN } : { mai: m[k], age: D.col.standage[k], vol: D.col.mvol_all[k] };
+  }
+
+  // One row per projection: genetic worth and SI of the tree improvement
+  // species, total MAI culmination, and the gain over unimproved
+  function scenarioTable(set) {
+    const spp = TI_SPP.filter(s => set[0].present.includes(s));
+    const base = totalCulmination(set[0]);
+    const end = D => D.col.mvol_all[D.len - 1];
+    const head = ["", ...spp.map(s => [`${s} genetic worth`, "%"]), ...spp.map(s => [`${s} SI, BH age 50`, "m"]),
+                  ["Total MAI culmination", "m³/ha/yr"], ["at stand age", "years"], ["Merch. vol. there", "m³/ha"],
+                  ["MAI gain", "%"], [`Merch. vol. at age ${fmt(set[0].col.standage[set[0].len - 1], 0)}`, "m³/ha"]];
+    const values = set.map(D => {
+      const c = totalCulmination(D);
+      return [sc(D), ...spp.map(s => (D.scenario.k ? (D.init[`${lc(s)}_gw`] || 0) : NaN)), ...spp.map(s => D.init[`${lc(s)}_si_bh`]),
+              c.mai, c.age, c.vol, D.scenario.k ? 100 * (c.mai / base.mai - 1) : NaN, end(D)];
+    });
+    const digits = [null, ...spp.map(() => 1), ...spp.map(() => 2), 3, 0, 1, 1, 1];
+    return { head, values, rows: values.map(r => r.map((v, j) => (j ? (Number.isFinite(v) ? fmt(v, digits[j]) : "–") : v))) };
   }
 
   // Culmination of merchantable MAI: by species (species total age) and by
@@ -541,23 +807,41 @@
   }
 
   // Charts, as in the Excel tool's report
-  function chartSpecs(D) {
-    const c = D.col, x = c.standage;
+  // Stand totals for the groups given, every projection overlapped. One
+  // projection: coloured by group. Several (tree improvement): coloured by
+  // projection, dashed by group.
+  function groupChart(D, prefix, label, unit, groups, set = [D]) {
+    const many = set.length > 1;
+    const series = [];
+    for (const E of set) {
+      const i = D.set.indexOf(E);
+      for (const [g, name, slot] of GROUPS.filter(([g]) => groups.includes(g)))
+        series.push({ label: many ? `${name} – ${sc(E)}` : name, slot: many ? i + 1 : slot,
+                      dash: many ? ["con", "dec", "all"].indexOf(g) : 0, x: E.col.standage, y: E.col[prefix + g] });
+    }
+    return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`, series, xLabel: X_LABEL };
+  }
+
+  // Groups in the stand: conifer and deciduous when both are there (alone,
+  // either is the same as the total)
+  const standGroups = D => (D.groups.con && D.groups.dec ? ["all", "con", "dec"] : ["all"]);
+
+  // Charts, as in the Excel tool's report, for the projections in set
+  // (overlapped when there are several: species improved in some scenario
+  // get a line per projection, dashed by projection)
+  function chartSpecs(set) {
+    const D = set[0], many = set.length > 1;
     const bySpp = (prefix, label, unit) => ({
       key: prefix.replace(/_$/, ""), title: prefix === "sc_" ? label : `${label} by species`, yLabel: `${label} (${unit})`,
-      series: D.present.map(s => ({ label: s, slot: SPECIES.indexOf(s) + 1, dash: 0, x, y: c[prefix + lc(s)] })),
+      series: D.present.flatMap(s => {
+        const improved = many && set.some(E => E.improved.includes(s));
+        return (improved ? set : [D]).map(E => ({
+          label: improved ? `${s} – ${sc(E)}` : s, slot: SPECIES.indexOf(s) + 1, dash: improved ? D.set.indexOf(E) : 0,
+          x: E.col.standage, y: E.col[prefix + lc(s)] }));
+      }),
     });
-    const byGroup = (prefix, label, unit) => {
-      const list = [["all", "Total", 2]];
-      // One group alone is the same as the total
-      if (D.groups.con && D.groups.dec) list.push(["con", "Conifer", 3], ["dec", "Deciduous", 1]);
-      return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`,
-               series: list.map(([g, name, slot]) => ({ label: name, slot, dash: 0, x, y: c[prefix + g] })) };
-    };
     return [
-      byGroup("mvol_", "Merchantable volume", "m³/ha"),
-      byGroup("mai_sa_", "Merchantable MAI (stand age)", "m³/ha/yr"),
-      byGroup("tvol_", "Total volume", "m³/ha"),
+      ...GROUP_MEASURES.map(([p, label, unit]) => groupChart(D, p, label, unit, standGroups(D), set)),
       bySpp("mvol_", "Merchantable volume", "m³/ha"),
       bySpp("mai_m_", "Merchantable MAI (species age)", "m³/ha/yr"),
       bySpp("topht_", "Top height", "m"),
@@ -569,32 +853,52 @@
     ].map(s => ({ ...s, xLabel: X_LABEL }));
   }
 
-  function render(D) {
-    $("sSummaryTitle").textContent = D.label;
-    const info = [`Stand age ${fmt(D.standAge, 0)}${D.form.standAge === "" ? ` (from the oldest species' total age, ${fmt(D.tmax, 1)})` : ""}`];
-    if (D.form.type) info.push(D.form.type);
-    info.push(`Percent stocking ${D.form.psflag ? "used" : "not used"}`, `BA adjustment ${D.form.baflag ? "on" : "off"}`);
-    $("sSummaryInfo").textContent = info.join(" · ");
-
-    const calc = calcTable(D);
-    $("sCalc").replaceWith(Object.assign(makeTable(calc.head, calc.rows), { id: "sCalc" }));
-    const cu = culmination(D);
-    $("sCulm").replaceWith(Object.assign(makeTable(cu.head, cu.rows), { id: "sCulm" }));
-    $("sCulmNote").textContent = cu.note;
-
+  function render() {
+    renderSummary();
+    renderCulm();
     renderYield();
-    const specs = chartSpecs(D);
-    const q = $("sQuickChart"), keep = q.value;
+    const q = $("sQuickChart"), keep = q.value || GROUP_MEASURES[0][0];
     q.innerHTML = "";
-    for (const s of specs) q.add(new Option(s.title, s.key));
-    q.value = specs.some(s => s.key === keep) ? keep : specs[0].key;
+    for (const [p, label] of GROUP_MEASURES) q.add(new Option(label, p));
+    q.value = keep;
+    renderQuickPick();
     renderQuick();
     renderCharts();
   }
 
+  function renderSummary() {
+    const D = picked("sum");
+    $("sSummaryTitle").textContent = D.label;
+    const info = [`Stand age ${fmt(D.standAge, 0)}${D.form.standAge === "" ? ` (from the oldest species' total age, ${fmt(D.tmax, 1)})` : ""}`];
+    info.push(`Percent stocking ${D.form.psflag ? "used" : "not used"}`, `BA adjustment ${D.form.baflag ? "on" : "off"}`);
+    if (D.form.ti) info.push(D.scenario.k ? `Tree improvement ${sc(D).toLowerCase()}${scenarioGw(D)}` : "Unimproved (tree improvement comparison)");
+    $("sSummaryInfo").textContent = info.join(" · ");
+
+    const calc = calcTable(D);
+    $("sCalc").replaceWith(Object.assign(makeTable(calc.head, calc.rows), { id: "sCalc" }));
+    $("sTiBox").hidden = !D.improved.length;
+    if (D.improved.length) {
+      const ti = tiTable(D);
+      $("sTiCalc").replaceWith(Object.assign(makeTable(ti.head, ti.rows), { id: "sTiCalc" }));
+      $("sTiNote").textContent = TI_NOTE;
+    }
+    $("sScenBox").hidden = D.set.length < 2;
+    if (D.set.length > 1) {
+      const st = scenarioTable(D.set);
+      $("sScenCalc").replaceWith(Object.assign(makeTable(st.head, st.rows), { id: "sScenCalc" }));
+      $("sScenNote").textContent = "MAI gain is over the unimproved stand's total MAI culmination.";
+    }
+  }
+
+  function renderCulm() {
+    const cu = culmination(picked("culm"));
+    $("sCulm").replaceWith(Object.assign(makeTable(cu.head, cu.rows), { id: "sCulm" }));
+    $("sCulmNote").textContent = cu.note;
+  }
+
   function renderYield() {
-    const D = S.result;
-    if (!D) return;
+    if (!S.set) return;
+    const D = picked("yield");
     const y = yieldTable(D, $("sYieldKind").value, Number($("sYieldStep").value));
     $("sYield").replaceWith(Object.assign(makeTable(y.head, y.rows, { groups: y.groups }), { id: "sYield" }));
     $("sYieldTitle").textContent = `Yield table for ${D.label}`;
@@ -603,19 +907,44 @@
       : "Merchantable MAI by species is over the species' total age.";
   }
 
+  // Chart under the results: tick boxes for conifer, deciduous and total,
+  // and for each projection
+  function renderQuickPick() {
+    const D = S.set[0], box = $("sQuickPick");
+    box.innerHTML = "";
+    for (const [g, name] of GROUPS) {
+      const there = g === "all" || D.groups[g];
+      box.appendChild(GypsyUI.checkbox(name, there && S.groupsShown.has(g), on => {
+        if (on) S.groupsShown.add(g); else S.groupsShown.delete(g);
+        renderQuick();
+      }, !there));
+    }
+    if (D.set.length < 2) return;
+    box.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
+    for (const E of D.set) {
+      box.appendChild(GypsyUI.checkbox(sc(E), !S.scenariosHidden.has(sc(E)), on => {
+        if (on) S.scenariosHidden.delete(sc(E)); else S.scenariosHidden.add(sc(E));
+        renderQuick();
+      }));
+    }
+  }
+
   const QUICK_HEIGHT = 300;
   function renderQuick() {
-    const D = S.result;
-    if (!D) return;
-    const spec = chartSpecs(D).find(s => s.key === $("sQuickChart").value);
+    if (!S.set) return;
+    const D = S.set[0];
+    const [p, label, unit] = GROUP_MEASURES.find(m => m[0] === $("sQuickChart").value);
+    const groups = GROUPS.map(([g]) => g).filter(g => (g === "all" || D.groups[g]) && S.groupsShown.has(g));
+    const spec = groupChart(D, p, label, unit, groups, D.set.filter(E => !S.scenariosHidden.has(sc(E))));
     GypsyChart.line($("sQuickBox"), { ...spec, height: QUICK_HEIGHT });
   }
 
   function renderCharts() {
-    const D = S.result, box = $("sCharts");
+    const box = $("sCharts");
     box.innerHTML = "";
-    if (!D) return;
-    for (const spec of chartSpecs(D)) {
+    if (!S.set) return;
+    const one = picked("chart"), D = one || S.set[0];
+    for (const spec of chartSpecs(one ? [one] : S.set)) {
       const panel = document.createElement("div");
       panel.className = "chart-panel";
       const chartBox = document.createElement("div");
@@ -623,7 +952,7 @@
       panel.draw = () => { svg = GypsyChart.line(chartBox, { ...spec, height: 260 }); };
       const actions = document.createElement("div");
       actions.className = "chart-actions";
-      const file = `${fileStem(D.label)}_${spec.key}.svg`;
+      const file = `${fileStem(one ? D.label : D.form.id.trim() || "New stand")}_${spec.key}.svg`;
       actions.append(
         GypsyUI.button("Open in new window", () => GypsyUI.openChartWindow(spec, file, t => message("sChartMessages", t, "warn")), "link"),
         GypsyUI.button("Download SVG", () => download(GypsyChart.toSVGText(svg), file, "image/svg+xml"), "link"));
@@ -657,14 +986,18 @@
     const f = D.form;
     const aoa = [
       ["GYPSY single stand input"], [],
-      ["Stand ID", D.label], ["Stand type", f.type || ""], ["Stand age", D.standAge],
+      ["Stand ID", D.label], ["Stand age", D.standAge],
       ["Stand age from", f.standAge === "" ? "Oldest species' total age (rounded up)" : "Entered"],
       ["Project to stand age", D.to], ["Use percent stocking", f.psflag ? "YES" : "NO"],
       ["Adjust to observed basal area", f.baflag ? "YES" : "NO"], [],
       ["Species", AGE_KINDS[S.kinds.age], HT_KINDS[S.kinds.ht], DEN_KINDS[S.kinds.n], "Percent stocking (%)", "Basal area (m²/ha)"],
       ...SPECIES.map(s => [s, ...FIELDS.map(x => (f.spp[s]?.[x.key] != null ? Number(f.spp[s][x.key]) : ""))]), [],
       ["Species", ...UTIL.map(x => x.label)],
-      ...SPECIES.map((s, i) => [s, ...UTIL.map(x => utilOptions(f)[x.key][i])]),
+      ...SPECIES.map((s, i) => [s, ...UTIL.map(x => utilOptions(f)[x.key][i])]), [],
+      ["Tree improvement", f.ti ? "YES" : "NO"],
+      ...(f.ti ? [["Species", ...SCENARIOS.map(k => `Scenario ${k} genetic worth (%)`), "Selection age (years)"],
+                  ...TI_SPP.map(s => [s, ...TI_FIELDS.map(x => (f.tiv[s]?.[x.key] != null ? Number(f.tiv[s][x.key]) : ""))]),
+                  ["Results in this workbook", sc(D)]] : []),
     ];
     return XLSX.utils.aoa_to_sheet(aoa);
   }
@@ -680,8 +1013,8 @@
   }
 
   $("sXlsx").addEventListener("click", () => {
-    const D = S.result;
-    if (!D) return;
+    if (!S.set) return;
+    const D = picked("export");
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, inputSheet(D), "Input");
 
@@ -693,6 +1026,19 @@
                     i[`${x}_si_t`], D.obs(`n_${x}`), i[`${x}_den0`], i[`${x}_sdf`], i[`${x}_psi`]].map(v => (Number.isFinite(v) || typeof v === "string" ? v : "")));
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(calcAoa), "Calculated");
+
+    if (D.improved.length) {
+      const ti = tiTable(D);
+      const tiAoa = headRows(ti);
+      for (const r of ti.values) tiAoa.push(r.map(v => (typeof v === "string" || Number.isFinite(v) ? v : "")));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tiAoa), "Tree improvement");
+    }
+    if (D.set.length > 1) {
+      const st = scenarioTable(D.set);
+      const stAoa = headRows(st);
+      for (const r of st.values) stAoa.push(r.map(v => (typeof v === "string" || Number.isFinite(v) ? v : "")));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(stAoa), "Scenarios");
+    }
 
     const cu = culmination(D);
     const cuAoa = headRows(cu);
@@ -715,16 +1061,16 @@
   });
 
   $("sCsv").addEventListener("click", () => {
-    const D = S.result;
-    if (!D) return;
+    if (!S.set) return;
+    const D = picked("export");
     // Without stand_idx, toCSV labels row r with standLabels[r]
     download(GypsyAPI.toCSV(yearlyTable(D), Array(D.len).fill(D.label)), `${fileStem(D.label)}_yearly.csv`);
     $("sExportMenu").open = false;
   });
 
   $("sYieldCsv").addEventListener("click", () => {
-    const D = S.result;
-    if (!D) return;
+    if (!S.set) return;
+    const D = picked("yield");
     const y = yieldTable(D, $("sYieldKind").value, Number($("sYieldStep").value));
     const head = y.head.map(h => (h[1] ? `${h[0]} (${h[1]})` : h[0]));
     if (y.groups) {
@@ -740,8 +1086,8 @@
   // Printable report: stand, inputs, calculated attributes, culmination,
   // charts and the 10-year yield table
   $("sPrint").addEventListener("click", () => {
-    const D = S.result;
-    if (!D) return;
+    if (!S.set) return;
+    const D = picked("export");
     $("sExportMenu").open = false;
     const r = $("printReport");
     r.innerHTML = "";
@@ -758,6 +1104,18 @@
     h("h2", "Calculated attributes");
     const calc = calcTable(D);
     r.appendChild(makeTable(calc.head, calc.rows));
+    if (D.improved.length) {
+      h("h2", "Tree improvement");
+      const ti = tiTable(D);
+      r.appendChild(makeTable(ti.head, ti.rows));
+      h("p", TI_NOTE, "small");
+    }
+    if (D.set.length > 1) {
+      h("h2", "Scenario comparison");
+      const st = scenarioTable(D.set);
+      r.appendChild(makeTable(st.head, st.rows));
+      h("p", "MAI gain is over the unimproved stand's total MAI culmination.", "small");
+    }
     h("h2", "Merchantable MAI culmination");
     const cu = culmination(D);
     r.appendChild(makeTable(cu.head, cu.rows));
@@ -767,7 +1125,7 @@
     const grid = document.createElement("div");
     grid.className = "print-charts";
     r.appendChild(grid);
-    for (const spec of chartSpecs(D)) {
+    for (const spec of chartSpecs(S.set)) {   // every projection, for comparison
       const c = document.createElement("div");
       grid.appendChild(c);
       GypsyChart.line(c, { ...spec, height: 220 });
@@ -789,27 +1147,50 @@
       else showChecks(check());
     }, 350);
   }
-  $("s-input").addEventListener("input", changed);
-  $("s-input").addEventListener("change", e => { if (e.target.type === "checkbox" || e.target.tagName === "SELECT") changed(); });
+  // (the results' own controls, below the inputs, aren't input changes)
+  const isInput = e => !e.target.closest("#sResults");
+  $("s-input").addEventListener("input", e => { if (isInput(e)) changed(); });
+  $("s-input").addEventListener("change", e => { if (isInput(e) && (e.target.type === "checkbox" || e.target.tagName === "SELECT")) changed(); });
+  $("sTiTable").addEventListener("input", selAgeEnabled);
+  $("sUtilMode").addEventListener("click", e => {
+    const b = e.target.closest("[data-util]");
+    if (!b || (b.dataset.util === "spp") === utilSpp()) return;
+    setUtilSpp(b.dataset.util === "spp");
+    changed();
+  });
+  $("sUtilAll").addEventListener("input", utilBySpp);
+  $("sTiShow").addEventListener("click", () => {
+    showTi(true);
+    changed();
+    $(`s_gw1_${TI_SPP[0]}`).focus();
+  });
+  $("sTiHide").addEventListener("click", () => {
+    showTi(false);
+    changed();
+    $("sTiShow").focus();
+  });
 
   $("sRun").addEventListener("click", () => {
     if (runStand()) {
-      if (!S.live) selectTab("s-summary");
+      if (!S.live) $("sResults").scrollIntoView({ behavior: "smooth", block: "start" });
       S.live = true;
     } else selectTab("s-input");
   });
   $("sExample").addEventListener("click", () => { setForm(EXAMPLE); changed(); });
+  // Empty species rows (results follow, as for any input change)
+  function clearSpecies(list) {
+    for (const s of list) for (const f of FIELDS) $(`s_${f.key}_${s}`).value = "";
+    changed();
+  }
   $("sClear").addEventListener("click", () => {
-    if (!confirm("Clear the stand inputs?")) return;
-    setForm({});
-    S.result = null;
-    S.live = false;
-    $("sMessages").innerHTML = "";
-    markStale(false);
-    showChecks([]);
-    $("sStatus").textContent = "Ready";
-    store.set("single", "");
+    if (confirm("Clear all four species rows?")) clearSpecies(SPECIES);
   });
+  const RENDER = { sum: renderSummary, culm: renderCulm, yield: renderYield, chart: renderCharts, export: () => {} };
+  for (const sel of document.querySelectorAll("#mode-single select[data-pick]"))
+    sel.addEventListener("change", () => {
+      S.pick[sel.dataset.pick] = sel.value;
+      RENDER[sel.dataset.pick]();
+    });
   $("sQuickChart").addEventListener("change", renderQuick);
   $("sYieldKind").addEventListener("change", renderYield);
   $("sYieldStep").addEventListener("change", renderYield);
@@ -817,6 +1198,7 @@
   document.addEventListener("click", e => { if (!e.target.closest("#sExportMenu")) $("sExportMenu").open = false; });
 
   buildForm();
+  setForm({});
   try { const saved = JSON.parse(store.get("single") || "null"); if (saved) setForm(saved); } catch (e) { /* ignore */ }
 
   GypsyUI.model.then(m => {

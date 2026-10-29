@@ -10,7 +10,8 @@
 //   GypsyAPI.toCSV(table, standLabels)       -> CSV text
 //
 // Input fields are named as the arguments of GYPSY_Sim() in R: stand,
-// stand_age, spp, n, si, age, ht, ps, ba (one row per stand and species).
+// stand_age, spp, n, si, age, ht, ps, ba (one row per stand and species),
+// and for tree improvement (GYPSY_Sim_TI(), option ti: true) gw and sel_age.
 //
 // A plain script (not an ES module) so the page also works when opened
 // straight from disk; also loads in Node with require().
@@ -29,6 +30,9 @@
     { key: "ht",        label: "Top height",      required: false, numeric: true  },
     { key: "ps",        label: "Percent stocking", required: false, numeric: true },
     { key: "ba",        label: "Basal area",      required: false, numeric: true  },
+    // Tree improvement only: not warned about when unassigned
+    { key: "gw",        label: "Genetic worth",   required: false, numeric: true, ti: true },
+    { key: "sel_age",   label: "Selection age",   required: false, numeric: true, ti: true },
   ];
   const SPECIES = ["AW", "SB", "SW", "PL"];
 
@@ -44,6 +48,8 @@
     ht:        ["ht", "topht", "toph", "topheight", "height"],
     ps:        ["ps", "percentstocking", "stocking"],
     ba:        ["ba", "basalarea", "baha"],
+    gw:        ["gw", "geneticworth", "genetic_worth"],
+    sel_age:   ["sel_age", "selage", "selectionage", "selection_age"],
   };
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -135,12 +141,13 @@
   }
 
   // Data rows (no header) + field -> column mapping -> model input. Missing
-  // optional fields are treated as missing values, with a warning; missing
-  // required fields are an error.
-  function inputFromRows(rows, mapping) {
+  // optional fields are treated as missing values, with a warning (tree
+  // improvement fields only when ti is true); missing required fields are
+  // an error.
+  function inputFromRows(rows, mapping, { ti = false } = {}) {
     const missingReq = FIELDS.filter(f => f.required && !(mapping[f.key] >= 0)).map(f => f.key);
     if (missingReq.length) throw new Error("Required column(s) not assigned: " + missingReq.join(", "));
-    const missingOpt = FIELDS.filter(f => !f.required && !(mapping[f.key] >= 0)).map(f => f.key);
+    const missingOpt = FIELDS.filter(f => !f.required && (ti || !f.ti) && !(mapping[f.key] >= 0)).map(f => f.key);
     const warnings = missingOpt.length
       ? ["Column(s) not assigned, treated as missing: " + missingOpt.join(", ")]
       : [];
@@ -155,13 +162,13 @@
   }
 
   // CSV text with a header row -> model input
-  function readInput(text) {
+  function readInput(text, opts) {
     const rows = parseDelimited(text);
     const header = (rows.shift() || []).map(h => h.trim());
     const lower = header.map(h => h.toLowerCase());
     const mapping = {};
     for (const f of FIELDS) mapping[f.key] = lower.indexOf(f.key);
-    return inputFromRows(rows, mapping);
+    return inputFromRows(rows, mapping, opts);
   }
 
   // ---- Running the model ---------------------------------------------------
@@ -187,7 +194,8 @@
   }
 
   // input: model input columns (stand IDs as strings)
-  // options: GYPSY options (see src/gypsy_wasm.cpp), plus
+  // options: GYPSY options (see src/gypsy_wasm.cpp; ti: true also uses
+  //   input.gw and input.sel_age), plus
   //   chunkSize  stands per WebAssembly call (default 1000); keeps memory
   //              use bounded for large inputs
   //   onChunk    if given, called with each chunk's result instead of
@@ -234,6 +242,7 @@
         spp:        pick(input.spp),
         n: pick(input.n), si: pick(input.si), age: pick(input.age),
         ht: pick(input.ht), ps: pick(input.ps), ba: pick(input.ba),
+        ...(simOptions.ti ? { gw: pick(input.gw), selAge: pick(input.sel_age) } : {}),
       }, simOptions);
 
       if (res.error) throw new Error(remapRows(res.error, rowIndex, rowLabels));
