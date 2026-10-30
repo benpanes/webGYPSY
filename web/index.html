@@ -28,8 +28,9 @@
         <button type="button" role="tab" aria-controls="s-charts" disabled>Charts</button>
       </nav>
       <div class="tab-actions">
+        <div class="spinner" id="sSpinner" aria-hidden="true"></div>
         <span class="small" id="sStatus">Loading model…</span>
-        <button id="sRun" disabled>Run GYPSY</button>
+        <button id="sRun" disabled>Start</button>
         <details class="menu" id="sExportMenu">
           <summary class="secondary-btn">Export</summary>
           <div class="menu-body">
@@ -58,7 +59,7 @@
             <label class="check"><input type="checkbox" id="sBaflag" checked> Adjust to observed basal area</label>
           </div>
           <p class="small hint">Stand age defaults to the oldest species' total age.</p>
-          <button class="secondary" id="sTiShow" aria-controls="sTiCard" aria-expanded="false">Tree improvement</button>
+          <button id="sTiShow" aria-controls="sTiCard" aria-expanded="false">Tree improvement</button>
         </section>
 
         <section class="card">
@@ -96,8 +97,10 @@
           <h2>Tree improvement</h2>
           <button class="link" id="sTiHide" title="Hide and project the stand unimproved">Disable</button>
         </div>
+        <div id="sTiChecks" class="checks-list"></div>
         <table class="ytg-table" id="sTiTable"></table>
-        <p class="small hint">Up to three genetic worth scenarios; the stand is also always projected unimproved for comparison.
+        <button class="secondary" id="sTiAdd" title="Add a scenario">Add</button>
+        <p class="small hint">Up to five genetic worth scenarios; the stand is also always projected unimproved for comparison.
           Raises the SW and PL site index for the genetic worth for height at the selection age (Luo and Thomas 2021).</p>
       </section>
 
@@ -288,7 +291,7 @@
           </div>
         </div>
         <div class="row" style="margin-top:16px; align-items:center">
-          <button id="run" disabled>Run GYPSY</button>
+          <button id="run" disabled>Run</button>
           <span class="small" id="status">Loading model…</span>
         </div>
         <div id="runMessages"></div>

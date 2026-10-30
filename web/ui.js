@@ -83,6 +83,13 @@
   });
   setMode(store.get("mode") === "multi" ? "multi" : "single");
 
+  // Scrolling over a focused number box moves the page, not the value:
+  // leaving the box first stops the browser changing it
+  document.addEventListener("wheel", e => {
+    const el = document.activeElement;
+    if (el && el.type === "number" && e.target === el) el.blur();
+  }, { passive: true });
+
   // ---- Helpers -------------------------------------------------------------------
   function download(data, name, type = "text/csv") {
     const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type }));

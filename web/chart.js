@@ -3,7 +3,7 @@
 //
 //   GypsyChart.line(container, {
 //     title, xLabel, yLabel,
-//     series: [{ label, slot (1-8), dash (0-3), x: [...], y: [...] }],
+//     series: [{ label, slot (1-8), dash (0-5), x: [...], y: [...] }],
 //     height,   // SVG height in px (default 280); width fills the container
 //   })
 //
@@ -18,7 +18,7 @@
   "use strict";
 
   const NS = "http://www.w3.org/2000/svg";
-  const DASHES = ["", "7 4", "2 3", "10 3 2 3"];
+  const DASHES = ["", "7 4", "2 3", "10 3 2 3", "14 4", "4 4"];
   const M = { top: 12, right: 16, bottom: 40, left: 56 };
 
   function el(tag, attrs = {}, parent) {

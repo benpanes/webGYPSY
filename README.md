@@ -38,7 +38,7 @@ Both modes can project improved seedlots (tree improvement), as
 seedlot's genetic worth for height at its selection age, using the age-age
 correlations of Luo and Thomas (2021). In single stand mode, press
 **Tree improvement** on the Stand tab and enter genetic worths (%) for up to
-three scenarios; selection age defaults to 15 and can be changed once a
+five scenarios; selection age defaults to 15 and can be changed once a
 genetic worth is entered. The stand is projected unimproved and under each
 scenario: the results under the Stand tab compare them in a scenario table
 and a chart with every scenario overlapped (tick boxes choose conifer,

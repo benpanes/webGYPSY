@@ -48,9 +48,10 @@
     { key: "stumpHt",  label: "Stump height (m)", def: 0.3, step: "0.05" },
   ];
   const TI_SPP = ["SW", "PL"];   // species with age-age correlations
-  const SCENARIOS = [1, 2, 3];
+  const SCENARIOS = [1, 2, 3, 4, 5];   // most scenarios; S.tiCount are shown
+  const TI_DEFAULT = 3;
   const TI_FIELDS = [
-    ...SCENARIOS.map(k => ({ key: `gw${k}`, label: `GW ${k}`, aria: `GW ${k} genetic worth (%)`, step: "0.1" })),
+    ...SCENARIOS.map(k => ({ key: `gw${k}`, gw: k, label: `GW ${k}`, aria: `GW ${k} genetic worth (%)`, step: "0.1" })),
     { key: "selAge", label: "Selection age (years)", aria: "selection age (years)", step: "1", def: "15" },
   ];
   const TI_WARN = "Tree improvement runs must use site index, or age and top height, from unimproved stands. " +
@@ -99,6 +100,7 @@
     kinds: { age: "T", ht: "ht", n: "n" },
     result: null,      // last successful run (see derive())
     live: false,       // after the first run, re-run as inputs change
+    tiCount: TI_DEFAULT,   // scenario columns on the tree improvement card
     set: null,         // projections of the last run: unimproved, then scenarios
     // Projection shown on each card, by name; "all" overlaps them (charts)
     pick: { sum: null, culm: null, yield: null, chart: "all", export: null },
@@ -148,16 +150,28 @@
 
     const ti = $("sTiTable");
     const tig = ti.createTHead().insertRow();
-    for (const [text, span] of [["", 1], ["Genetic worth (%)", SCENARIOS.length], ["", 1]]) {
+    for (const text of ["", "Genetic worth (%)", null, ""]) {
       const th = document.createElement("th");
-      th.textContent = text;
-      th.colSpan = span;
+      if (text === null) {   // above the gap before selection age
+        th.className = "ti-gap";
+        th.appendChild($("sTiAdd"));
+      } else th.textContent = text;
       tig.appendChild(th);
     }
     const tih = ti.tHead.insertRow();
-    for (const text of ["Species", ...TI_FIELDS.map(x => x.label)]) {
+    for (const x of [{ label: "Species" }, ...TI_FIELDS]) {
+      if (x.key === "selAge") tih.appendChild(Object.assign(document.createElement("th"), { className: "ti-gap" }));
       const th = document.createElement("th");
-      th.textContent = text;
+      th.textContent = x.label;
+      if (x.gw) {
+        th.dataset.gw = x.gw;
+        const del = GypsyUI.button("×", () => removeScenario(x.gw), "link");
+        del.type = "button";
+        del.className = "link gw-del";
+        del.setAttribute("aria-label", `Remove GW ${x.gw}`);
+        del.title = `Remove GW ${x.gw}`;
+        th.appendChild(del);
+      }
       tih.appendChild(th);
     }
     const tib = ti.createTBody();
@@ -169,10 +183,13 @@
       th.title = SPP_NAMES[s];
       tr.appendChild(th);
       for (const x of TI_FIELDS) {
+        if (x.key === "selAge") tr.insertCell().className = "ti-gap";
         const inp = document.createElement("input");
         Object.assign(inp, { type: "number", step: x.step, min: "0", id: `s_${x.key}_${s}` });
         inp.setAttribute("aria-label", `${SPP_NAMES[s]}, ${x.aria}`);
-        tr.insertCell().appendChild(inp);
+        const td = tr.insertCell();
+        if (x.gw) td.dataset.gw = x.gw;
+        td.appendChild(inp);
       }
     }
 
@@ -215,7 +232,7 @@
       id: $("sStandId").value, standAge: $("sStandAge").value,
       projectTo: $("sProjectTo").value, psflag: $("sPsflag").checked, baflag: $("sBaflag").checked,
       kinds: { ...S.kinds }, spp: {}, util: {}, utilAll: {}, utilBySpp: utilSpp(),
-      ti: !$("sTiCard").hidden, tiv: {},
+      ti: !$("sTiCard").hidden, tiv: {}, tiCount: S.tiCount,
     };
     for (const x of UTIL) if ($(`s_${x.key}_all`).value !== "") o.utilAll[x.key] = $(`s_${x.key}_all`).value;
     for (const s of TI_SPP) {
@@ -254,6 +271,8 @@
       if (t.gw != null && t.gw1 == null) t.gw1 = t.gw;   // saved before scenarios
       for (const x of TI_FIELDS) $(`s_${x.key}_${s}`).value = t[x.key] ?? x.def ?? "";
     }
+    S.tiCount = o.tiCount ?? Math.max(TI_DEFAULT, ...SCENARIOS.filter(k => TI_SPP.some(s => $(`s_gw${k}_${s}`).value !== "")));
+    tiColumns();
     showTi(!!o.ti);
   }
 
@@ -286,6 +305,26 @@
     $("sTiShow").hidden = on;
     $("sTiShow").setAttribute("aria-expanded", on);
     selAgeEnabled();
+  }
+
+  // Show S.tiCount scenario columns
+  function tiColumns() {
+    for (const el of document.querySelectorAll("#sTiTable [data-gw]")) el.hidden = Number(el.dataset.gw) > S.tiCount;
+    $("sTiTable").tHead.rows[0].cells[1].colSpan = S.tiCount;
+    for (const b of document.querySelectorAll("#sTiTable .gw-del")) b.hidden = S.tiCount < 2;
+    $("sTiAdd").disabled = S.tiCount >= SCENARIOS.length;
+  }
+
+  // Remove a scenario: later ones move left to keep GW 1, 2, ... in order
+  function removeScenario(k) {
+    for (const s of TI_SPP) {
+      for (let j = k; j < SCENARIOS.length; j++) $(`s_gw${j}_${s}`).value = $(`s_gw${j + 1}_${s}`).value;
+      $(`s_gw${SCENARIOS.length}_${s}`).value = "";
+    }
+    S.tiCount--;
+    tiColumns();
+    selAgeEnabled();
+    changed();
   }
 
   // Selection age only applies once a genetic worth is entered
@@ -368,7 +407,7 @@
     if (!present) add("s_age_AW", "err", "Fill in at least one species.");
 
     if (!$("sTiCard").hidden) {
-      add("sTiCard", "warn", TI_WARN);   // shown on the Species card only
+      add("sTiCard", "warn", TI_WARN);
       let improved = 0;
       for (const s of TI_SPP) {
         const id = k => `s_${k}_${s}`;
@@ -436,8 +475,7 @@
     for (const el of document.querySelectorAll("#s-input td.err, #s-input td.warn, #s-input .field.err, #s-input .field.warn"))
       el.classList.remove("err", "warn");
     for (const el of document.querySelectorAll("#s-input input[title]")) el.removeAttribute("title");
-    const box = $("sChecks");
-    box.innerHTML = "";
+    $("sChecks").innerHTML = $("sTiChecks").innerHTML = "";
     for (const c of list) {
       const el = $(c.id);
       const holder = el.closest("td") || el.closest(".field");
@@ -445,13 +483,15 @@
         holder.classList.remove("warn");
         holder.classList.add(c.level);
       }
-      el.title = (el.title ? el.title + "\n" : "") + c.text;
+      // Input boxes only: their titles are cleared on each check above
+      if (el.tagName === "INPUT") el.title = (el.title ? el.title + "\n" : "") + c.text;
       const b = document.createElement("button");
       b.type = "button";
       b.className = "check-item " + c.level;
       b.textContent = (c.level === "err" ? "Error: " : "Check: ") + c.text;
       b.addEventListener("click", () => { selectTab("s-input"); el.focus(); });
-      box.appendChild(b);
+      // Tree improvement's own checks go on its card
+      $(el.closest("#sTiCard") ? "sTiChecks" : "sChecks").appendChild(b);
     }
   }
 
@@ -609,7 +649,7 @@
       if (card === "chart") sel.add(new Option("All, overlapped", "all"));
       for (const D of set) sel.add(new Option(gwLabel(D), sc(D)));
       if (set.length) sel.value = card === "chart" && S.pick.chart === "all" ? "all" : sc(picked(card));
-      sel.parentElement.hidden = set.length < 2;
+      sel.closest(".scenario-pick").hidden = set.length < 2;
     }
   }
 
@@ -940,17 +980,19 @@
   function renderQuickPick() {
     const D = S.set[0], box = $("sQuickPick");
     box.innerHTML = "";
+    const column = () => box.appendChild(Object.assign(document.createElement("div"), { className: "pick-col" }));
+    const totals = column();
     for (const [g, name] of GROUPS) {
       const there = g === "all" || D.groups[g];
-      box.appendChild(GypsyUI.checkbox(name, there && S.groupsShown.has(g), on => {
+      totals.appendChild(GypsyUI.checkbox(name, there && S.groupsShown.has(g), on => {
         if (on) S.groupsShown.add(g); else S.groupsShown.delete(g);
         renderQuick();
       }, !there));
     }
     if (D.set.length < 2) return;
-    box.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
+    const scenarios = column();
     for (const E of D.set) {
-      box.appendChild(GypsyUI.checkbox(gwLabel(E), !S.scenariosHidden.has(sc(E)), on => {
+      scenarios.appendChild(GypsyUI.checkbox(gwLabel(E), !S.scenariosHidden.has(sc(E)), on => {
         if (on) S.scenariosHidden.delete(sc(E)); else S.scenariosHidden.add(sc(E));
         renderQuick();
       }));
@@ -1023,8 +1065,9 @@
       ["Species", ...UTIL.map(x => x.label)],
       ...SPECIES.map((s, i) => [s, ...UTIL.map(x => utilOptions(f)[x.key][i])]), [],
       ["Tree improvement", f.ti ? "YES" : "NO"],
-      ...(f.ti ? [["Species", ...SCENARIOS.map(k => `GW ${k} (%)`), "Selection age (years)"],
-                  ...TI_SPP.map(s => [s, ...TI_FIELDS.map(x => (f.tiv[s]?.[x.key] != null ? Number(f.tiv[s][x.key]) : ""))]),
+      ...(f.ti ? [["Species", ...SCENARIOS.slice(0, f.tiCount).map(k => `GW ${k} (%)`), "Selection age (years)"],
+                  ...TI_SPP.map(s => [s, ...TI_FIELDS.filter(x => !x.gw || x.gw <= f.tiCount)
+                                       .map(x => (f.tiv[s]?.[x.key] != null ? Number(f.tiv[s][x.key]) : ""))]),
                   ["Results in this workbook", sc(D)]] : []),
     ];
     return XLSX.utils.aoa_to_sheet(aoa);
@@ -1166,12 +1209,30 @@
   window.addEventListener("afterprint", () => { $("printReport").innerHTML = ""; });
 
   // ---- Events ------------------------------------------------------------------------
+  // Spinner: on from an input change until the rerun is done, for long
+  // enough to be seen (runs take milliseconds)
+  const SPIN_MIN_MS = 400;
+  let spinStart = 0, spinTimer;
+  function spinOn() {
+    clearTimeout(spinTimer);
+    spinStart = spinStart || performance.now();
+    $("sSpinner").classList.add("on");
+  }
+  function spinOff() {
+    spinTimer = setTimeout(() => {
+      $("sSpinner").classList.remove("on");
+      spinStart = 0;
+    }, Math.max(0, SPIN_MIN_MS - (performance.now() - spinStart)));
+  }
+
   let timer;
   function changed() {
     store.set("single", JSON.stringify(formState()));
     clearTimeout(timer);
+    const rerun = S.live && S.gypsy;
+    if (rerun) spinOn();
     timer = setTimeout(() => {
-      if (S.live && S.gypsy) runStand();
+      if (rerun) { runStand(); spinOff(); }
       else showChecks(check());
     }, 350);
   }
@@ -1180,6 +1241,12 @@
   $("s-input").addEventListener("input", e => { if (isInput(e)) changed(); });
   $("s-input").addEventListener("change", e => { if (isInput(e) && (e.target.type === "checkbox" || e.target.tagName === "SELECT")) changed(); });
   $("sTiTable").addEventListener("input", selAgeEnabled);
+  $("sTiAdd").addEventListener("click", () => {
+    S.tiCount++;
+    tiColumns();
+    changed();
+    $(`s_gw${S.tiCount}_${TI_SPP[0]}`).focus();
+  });
   $("sUtilMode").addEventListener("click", e => {
     const b = e.target.closest("[data-util]");
     if (!b || (b.dataset.util === "spp") === utilSpp()) return;
@@ -1199,9 +1266,13 @@
   });
 
   $("sRun").addEventListener("click", () => {
-    if (runStand()) {
+    spinOn();
+    const ok = runStand();
+    spinOff();
+    if (ok) {
       if (!S.live) $("sResults").scrollIntoView({ behavior: "smooth", block: "start" });
       S.live = true;
+      $("sRun").disabled = true;   // results follow the inputs from here
     } else selectTab("s-input");
   });
   for (const ex of EXAMPLES) {
