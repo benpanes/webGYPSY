@@ -3,3 +3,5 @@ web/gypsy.js
 web/gypsy.wasm
 dist/
 *.o
+/logos/
+Features to add.txt

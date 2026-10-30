@@ -31,6 +31,7 @@
         <div class="spinner" id="sSpinner" aria-hidden="true"></div>
         <span class="small" id="sStatus">Loading model…</span>
         <button id="sRun" disabled>Start</button>
+        <button id="sReset">Reset</button>
         <details class="menu" id="sExportMenu">
           <summary class="secondary-btn">Export</summary>
           <div class="menu-body">
@@ -83,12 +84,13 @@
         </div>
         <div class="table-wrap"><table class="ytg-table species" id="sSpecies"></table></div>
         <div id="sChecks" class="checks-list"></div>
+        <!-- Clear all moves under the species rows' Clear buttons -->
+        <button class="link" id="sClear">Clear all</button>
         <div class="row" style="margin-top:12px">
           <details class="menu menu-left" id="sExampleMenu">
             <summary class="secondary-btn">Load example</summary>
             <div class="menu-body" id="sExampleList"></div>
           </details>
-          <button class="secondary" id="sClear">Clear all</button>
         </div>
       </section>
 
@@ -166,7 +168,13 @@
     <!-- Charts -->
     <div class="tabpanel" role="tabpanel" id="s-charts" hidden>
       <section class="card">
-        <div class="row chart-pick"><label class="scenario-pick" hidden>Scenarios <select data-pick="chart"></select></label></div>
+        <div class="row chart-pick">
+          <details class="menu menu-left" id="sChartMenu">
+            <summary class="secondary-btn">Charts shown</summary>
+            <div class="menu-body" id="sChartList"></div>
+          </details>
+          <label class="scenario-pick" hidden>Scenarios <select data-pick="chart"></select></label>
+        </div>
         <div id="sChartMessages"></div>
         <div class="charts" id="sCharts"></div>
       </section>
@@ -366,6 +374,10 @@
 
   <!-- ---- About ---------------------------------------------------------------------- -->
   <footer class="about">
+    <div class="logos">
+      <img class="logo" src="logos/lab.svg" alt="Forest Growth and Yield Lab">
+      <img class="logo" src="logos/ualberta.svg" alt="University of Alberta">
+    </div>
     <details>
       <summary>About this app</summary>
       <div class="more-body">

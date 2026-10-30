@@ -10,8 +10,8 @@
 // Colours come from CSS custom properties --series-1 .. --series-8 and the
 // --chart-* chrome tokens, so light and dark mode are set in the stylesheet.
 // x must be ascending within a series; NaN values break the line.
-// GypsyChart.toSVGText(svg) serialises a chart with its colours resolved, for
-// download.
+// GypsyChart.toSVGText(svg) serialises a chart with its colours resolved and
+// its title and legend drawn above the plot, for download.
 // ---------------------------------------------------------------------------
 
 (function (root) {
@@ -105,6 +105,7 @@
     const pw = W - M.left - M.right, ph = H - M.top - M.bottom;
     const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img",
                             "aria-label": `${title}: line chart of ${series.length} series` }, container);
+    svg.chartInfo = { title, series };   // for the download's heading
 
     let xmin = Infinity, xmax = -Infinity, ymin = 0, ymax = -Infinity;
     for (const s of series) for (let i = 0; i < s.x.length; i++) {
@@ -153,22 +154,6 @@
       }
       if (d) el("path", { d, class: "series-line", style: `stroke: var(--series-${s.slot})`,
                           "stroke-dasharray": DASHES[s.dash || 0] }, lines);
-    }
-
-    // Direct labels at the line ends for up to four series, nudged apart
-    if (series.length > 1 && series.length <= 4) {
-      const ends = series.map(s => {
-        for (let i = s.x.length - 1; i >= 0; i--) if (Number.isFinite(s.y[i])) return { s, y: sy(s.y[i]), x: sx(s.x[i]) };
-        return null;
-      }).filter(Boolean).sort((a, b) => a.y - b.y);
-      // Labels sit just above their line's end: keep them inside the plot
-      // and at least 13 px apart
-      for (const e of ends) e.y = Math.max(e.y, M.top + 16);
-      for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
-      for (const e of ends) {
-        const t = el("text", { x: e.x - 4, y: e.y - 6, "text-anchor": "end", class: "chart-direct" }, svg);
-        t.textContent = e.s.label;
-      }
     }
 
     // Crosshair and tooltip
@@ -231,6 +216,41 @@
   }
 
   // Chart SVG -> standalone SVG text with colours and fonts resolved
+  // On the page the title and legend are HTML beside the chart; in a download
+  // they're drawn above the plot. Items wrap by estimated text width.
+  function addHeading(svg, copy) {
+    const { title, series } = svg.chartInfo;
+    const W = Number(svg.getAttribute("width")), H = Number(svg.getAttribute("height"));
+    const tokens = getComputedStyle(svg.ownerDocument.documentElement);
+    const ink = getComputedStyle(svg.querySelector("text")).fill;
+    const font = getComputedStyle(svg).fontFamily;
+    const text = (parent, x, y, str, size, weight) => {
+      const t = el("text", { x, y, fill: ink, "font-family": font, "font-size": size, "font-weight": weight }, parent);
+      t.textContent = str;
+    };
+
+    const head = el("g");
+    text(head, 8, 18, title, 14, 600);
+    let x = 8, y = 38;
+    if (series.length > 1) {
+      for (const s of series) {
+        const w = 28 + s.label.length * 6.2;
+        if (x > 8 && x + w > W - 8) { x = 8; y += 18; }
+        el("line", { x1: x, y1: y - 4, x2: x + 22, y2: y - 4, stroke: tokens.getPropertyValue(`--series-${s.slot}`).trim(),
+                     "stroke-width": 2, "stroke-dasharray": DASHES[s.dash || 0] }, head);
+        text(head, x + 27, y, s.label, 11, 400);
+        x += w + 12;
+      }
+    }
+    const top = series.length > 1 ? y + 12 : 28;
+
+    const plot = el("g", { transform: `translate(0 ${top})` });
+    while (copy.firstChild) plot.appendChild(copy.firstChild);
+    copy.append(head, plot);
+    copy.setAttribute("height", H + top);
+    copy.setAttribute("viewBox", `0 0 ${W} ${H + top}`);
+  }
+
   function toSVGText(svg) {
     const copy = svg.cloneNode(true);
     const src = svg.querySelectorAll("*"), dst = copy.querySelectorAll("*");
@@ -239,6 +259,7 @@
       for (const p of ["stroke", "fill", "stroke-width", "font-size", "font-family", "font-weight", "visibility"])
         dst[i].style.setProperty(p, cs.getPropertyValue(p));
     });
+    addHeading(svg, copy);
     copy.setAttribute("xmlns", NS);
     copy.style.background = getComputedStyle(svg.parentNode).backgroundColor;
     return new XMLSerializer().serializeToString(copy);

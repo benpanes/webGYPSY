@@ -54,7 +54,11 @@ $html = [regex]::Replace($html, '<script src="(?!https?:|//)([^":]+\.js)"></scri
 $html = [regex]::Replace($html, '<link rel="stylesheet" href="(?!https?:|//)([^":]+\.css)">', {
   param($m) "<style>`n" + (Read-WebFile $m.Groups[1].Value).Replace("</style", "<\/style") + "`n</style>"
 })
-if ($html -match '<script src=|<link rel="stylesheet"') { throw "dist/gypsy.html still refers to an external file" }
+# Logos are inlined as SVG, so they work offline and take the theme's colours
+$html = [regex]::Replace($html, '<img class="logo" src="([^"]+\.svg)" alt="([^"]+)">', {
+  param($m) (Read-WebFile $m.Groups[1].Value).Trim().Replace('<svg ', "<svg class=""logo"" role=""img"" aria-label=""$($m.Groups[2].Value)"" ")
+})
+if ($html -match '<script src=|<link rel="stylesheet"|<img class="logo"') { throw "dist/gypsy.html still refers to an external file" }
 
 # Build information shown in the app's footer: version from the git tag
 # ("v1.0.0", or "v1.0.0-2-gabc1234" / "-dirty" between releases), the rGYPSY

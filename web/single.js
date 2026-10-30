@@ -95,6 +95,22 @@
     ["tvol_",   "Total volume", "m³/ha"],
   ];
 
+  // Charts tab. Those with m and t overlap merchantable and total versions of
+  // a metric; group charts are of stand totals, the others by species.
+  const KINDS = [{ id: "m", name: "Merchantable", short: "merch." }, { id: "t", name: "Total", short: "total" }];
+  const CHARTS = [
+    { key: "vol",     noun: "volume", suffix: "", unit: "m³/ha", group: true, m: "mvol_", t: "tvol_" },
+    { key: "mai",     noun: "MAI", suffix: " (stand age)", unit: "m³/ha/yr", group: true, m: "mai_sa_", t: "tmai_sa_" },
+    { key: "vol_spp", noun: "volume", suffix: " by species", unit: "m³/ha", m: "mvol_", t: "tvol_" },
+    { key: "mai_spp", noun: "MAI", suffix: " by species (species age)", unit: "m³/ha/yr", m: "mai_m_", t: "mai_t_" },
+    { key: "topht",   noun: "top height", suffix: " by species", unit: "m", col: "topht_" },
+    { key: "qmd",     noun: "quadratic mean diameter", suffix: " by species", unit: "cm", col: "qmd_" },
+    { key: "ba",      noun: "basal area", suffix: " by species", unit: "m²/ha", col: "ba_" },
+    { key: "sc",      noun: "species composition", suffix: "", unit: "proportion", col: "sc_" },
+    { key: "den_spp", noun: "density", suffix: " by species", unit: "stems/ha", m: "mn_", t: "n_" },
+  ];
+  const cap = t => t[0].toUpperCase() + t.slice(1);
+
   const S = {
     gypsy: null,
     kinds: { age: "T", ht: "ht", n: "n" },
@@ -104,6 +120,8 @@
     set: null,         // projections of the last run: unimproved, then scenarios
     // Projection shown on each card, by name; "all" overlaps them (charts)
     pick: { sum: null, culm: null, yield: null, chart: "all", export: null },
+    chartsHidden: new Set(),   // Charts tab: chart keys
+    kindsHidden: new Set(),    //   chart key + kind id, e.g. "volt"
     groupsShown: new Set(["con", "dec"]),   // chart under the results
     scenariosHidden: new Set(),             //   (scenario names)
   };
@@ -134,7 +152,8 @@
       const tr = body.insertRow();
       const th = document.createElement("th");
       th.scope = "row";
-      th.innerHTML = `${s} <span class="small">${SPP_NAMES[s]}</span>`;
+      th.textContent = s;
+      th.title = SPP_NAMES[s];
       tr.appendChild(th);
       for (const f of FIELDS) {
         const inp = document.createElement("input");
@@ -147,6 +166,9 @@
       clear.setAttribute("aria-label", `Clear ${SPP_NAMES[s]}`);
       tr.insertCell().appendChild(clear);
     }
+    const foot = t.createTFoot().insertRow();
+    foot.insertCell().colSpan = FIELDS.length + 1;
+    foot.insertCell().appendChild($("sClear"));
 
     const ti = $("sTiTable");
     const tig = ti.createTHead().insertRow();
@@ -602,7 +624,7 @@
       });
       for (const D of set) {
         D.set = set;
-        if (sc(D)) D.label += ` – ${sc(D)}`;
+        if (sc(D)) D.label += ` – ${gwLabel(D)}`;
       }
       const ms = performance.now() - t0;
 
@@ -656,13 +678,6 @@
   // A species' genetic worth in a scenario, e.g. "10%"
   const gwPct = (D, s) => `${Number((D.init[`${lc(s)}_gw`] || 0).toFixed(2))}%`;
 
-  // " (SW 10%, PL 5%)" for a scenario
-  function scenarioGw(D) {
-    if (!D.scenario.k) return "";
-    const parts = D.improved.map(s => `${s} ${gwPct(D, s)}`);
-    return parts.length ? ` (${parts.join(", ")})` : "";
-  }
-
   // Chart label for a projection: "Unimproved", or species and genetic
   // worth: "SW 10%, PL 5%", or "SW 10%" for one species s
   function gwLabel(D, s) {
@@ -696,7 +711,10 @@
     const make = f => { const out = new Float64Array(len); for (let r = 0; r < len; r++) out[r] = f(r); return out; };
     col.mvol_dec = col.mvol_aw;
     col.tvol_dec = col.tvol_aw;
-    for (const g of ["con", "dec", "all"]) col[`mai_sa_${g}`] = make(r => z(col[`mvol_${g}`][r]) / col.standage[r]);
+    for (const g of ["con", "dec", "all"]) {
+      col[`mai_sa_${g}`] = make(r => z(col[`mvol_${g}`][r]) / col.standage[r]);
+      col[`tmai_sa_${g}`] = make(r => z(col[`tvol_${g}`][r]) / col.standage[r]);
+    }
     col.pc_con = make(r => (col.mvol_con[r] > 1e-4 ? (z(col.mn_sb[r]) + z(col.mn_sw[r]) + z(col.mn_pl[r])) / col.mvol_con[r] : NaN));
     col.pc_dec = make(r => (col.mvol_aw[r] > 1e-4 ? z(col.mn_aw[r]) / col.mvol_aw[r] : NaN));
 
@@ -795,7 +813,7 @@
                   ["MAI gain", "%"], [`Merch. vol. at age ${fmt(set[0].col.standage[set[0].len - 1], 0)}`, "m³/ha"]];
     const values = set.map(D => {
       const c = totalCulmination(D);
-      return [sc(D), ...spp.map(s => (D.scenario.k ? (D.init[`${lc(s)}_gw`] || 0) : NaN)), ...spp.map(s => D.init[`${lc(s)}_si_bh`]),
+      return [gwLabel(D), ...spp.map(s => (D.scenario.k ? (D.init[`${lc(s)}_gw`] || 0) : NaN)), ...spp.map(s => D.init[`${lc(s)}_si_bh`]),
               c.mai, c.age, c.vol, D.scenario.k ? 100 * (c.mai / base.mai - 1) : NaN, end(D)];
     });
     const digits = [null, ...spp.map(() => 1), ...spp.map(() => 2), 3, 0, 1, 1, 1];
@@ -895,30 +913,42 @@
   const standGroups = D => (D.groups.con && D.groups.dec ? ["all", "con", "dec"] : ["all"]);
 
   // Charts, as in the Excel tool's report, for the projections in set
-  // (overlapped when there are several: species improved in some scenario
-  // get a line per projection, dashed by projection)
-  function chartSpecs(set) {
+  // (overlapped when there are several). Stand totals: coloured by projection
+  // when there are several, else by group; dashed by group and kind. Species:
+  // coloured by species, total in the next four colours; species improved in
+  // some scenario get a line per projection, dashed by projection.
+  // filtered applies the Charts tab's tick boxes.
+  function chartSpecs(set, filtered = false) {
     const D = set[0], many = set.length > 1;
-    const bySpp = (prefix, label, unit) => ({
-      key: prefix.replace(/_$/, ""), title: prefix === "sc_" ? label : `${label} by species`, yLabel: `${label} (${unit})`,
-      series: D.present.flatMap(s => {
-        const improved = many && set.some(E => E.improved.includes(s));
-        return (improved ? set : [D]).map(E => ({
-          label: !improved ? s : E.scenario.k ? gwLabel(E, s) : `${s} – ${sc(E)}`, slot: SPECIES.indexOf(s) + 1, dash: improved ? D.set.indexOf(E) : 0,
-          x: E.col.standage, y: E.col[prefix + lc(s)] }));
-      }),
-    });
-    return [
-      ...GROUP_MEASURES.map(([p, label, unit]) => groupChart(D, p, label, unit, standGroups(D), set)),
-      bySpp("mvol_", "Merchantable volume", "m³/ha"),
-      bySpp("mai_m_", "Merchantable MAI (species age)", "m³/ha/yr"),
-      bySpp("topht_", "Top height", "m"),
-      bySpp("qmd_", "Quadratic mean diameter", "cm"),
-      bySpp("ba_", "Basal area", "m²/ha"),
-      bySpp("n_", "Density", "stems/ha"),
-      bySpp("mn_", "Merchantable density", "stems/ha"),
-      bySpp("sc_", "Species composition", "proportion"),
-    ].map(s => ({ ...s, xLabel: X_LABEL }));
+    const specs = [];
+    for (const c of CHARTS) {
+      if (filtered && S.chartsHidden.has(c.key)) continue;
+      const kinds = c.m ? KINDS.filter(k => !filtered || !S.kindsHidden.has(c.key + k.id)) : [{ id: "", col: c.col }];
+      const both = kinds.length > 1;
+      const tag = (text, k) => (both ? `${text} ${k.short}` : text);
+      const prefix = k => (k.id ? c[k.id] : k.col);
+      const series = [];
+      if (c.group) {
+        const groups = GROUPS.filter(([g]) => standGroups(D).includes(g));
+        for (const E of set) for (const [g, name, slot] of groups) for (const k of kinds) {
+          const stand = tag(g === "all" ? "Stand" : name, k), kind = KINDS.indexOf(k);
+          series.push({ label: many ? `${stand} – ${gwLabel(E)}` : stand, slot: many ? D.set.indexOf(E) + 1 : slot,
+                        dash: many ? ["con", "dec", "all"].indexOf(g) + 3 * kind : kind, x: E.col.standage, y: E.col[prefix(k) + g] });
+        }
+      } else {
+        for (const s of D.present) for (const k of kinds) {
+          const improved = many && set.some(E => E.improved.includes(s));
+          for (const E of improved ? set : [D]) {
+            const name = !improved ? s : E.scenario.k ? gwLabel(E, s) : `${s} – ${sc(E)}`;
+            series.push({ label: tag(name, k), slot: SPECIES.indexOf(s) + 1 + (k.id === "t" ? 4 : 0),
+                          dash: improved ? D.set.indexOf(E) : 0, x: E.col.standage, y: E.col[prefix(k) + lc(s)] });
+          }
+        }
+      }
+      const noun = c.m && !both ? `${kinds[0].name} ${c.noun}` : cap(c.noun);
+      specs.push({ key: c.key, title: noun + c.suffix, yLabel: `${noun} (${c.unit})`, xLabel: X_LABEL, series, chart: c });
+    }
+    return specs;
   }
 
   function render() {
@@ -934,13 +964,18 @@
     renderCharts();
   }
 
+  // Line under a result's title (on the page and in the report)
+  function summaryInfo(D) {
+    const info = [`Stand age ${fmt(D.standAge, 0)}${D.form.standAge === "" ? ` (from the oldest species' total age, ${fmt(D.tmax, 1)})` : ""}`];
+    info.push(`Percent stocking ${D.form.psflag ? "used" : "not used"}`, `BA adjustment ${D.form.baflag ? "on" : "off"}`);
+    if (D.form.ti) info.push(D.scenario.k ? `Tree improvement: ${gwLabel(D)}` : "Unimproved (tree improvement comparison)");
+    return info.join(" · ");
+  }
+
   function renderSummary() {
     const D = picked("sum");
     $("sSummaryTitle").textContent = D.label;
-    const info = [`Stand age ${fmt(D.standAge, 0)}${D.form.standAge === "" ? ` (from the oldest species' total age, ${fmt(D.tmax, 1)})` : ""}`];
-    info.push(`Percent stocking ${D.form.psflag ? "used" : "not used"}`, `BA adjustment ${D.form.baflag ? "on" : "off"}`);
-    if (D.form.ti) info.push(D.scenario.k ? `Tree improvement ${sc(D)}${scenarioGw(D)}` : "Unimproved (tree improvement comparison)");
-    $("sSummaryInfo").textContent = info.join(" · ");
+    $("sSummaryInfo").textContent = summaryInfo(D);
 
     const calc = calcTable(D);
     $("sCalc").replaceWith(Object.assign(makeTable(calc.head, calc.rows), { id: "sCalc" }));
@@ -1014,7 +1049,7 @@
     box.innerHTML = "";
     if (!S.set) return;
     const one = picked("chart"), D = one || S.set[0];
-    for (const spec of chartSpecs(one ? [one] : S.set)) {
+    for (const spec of chartSpecs(one ? [one] : S.set, true)) {
       const panel = document.createElement("div");
       panel.className = "chart-panel";
       const chartBox = document.createElement("div");
@@ -1026,7 +1061,21 @@
       actions.append(
         GypsyUI.button("Open in new window", () => GypsyUI.openChartWindow(spec, file, t => message("sChartMessages", t, "warn")), "link"),
         GypsyUI.button("Download SVG", () => download(GypsyChart.toSVGText(svg), file, "image/svg+xml"), "link"));
-      panel.append(chartBox, actions);
+      // Merchantable / total tick boxes; at least one stays on. Charts without
+      // them keep the empty row, so charts line up across (see #sCharts)
+      const pick = document.createElement("div");
+      pick.className = "checks chart-kinds";
+      if (spec.chart.m) {
+        const on = KINDS.filter(k => !S.kindsHidden.has(spec.key + k.id));
+        for (const k of KINDS) {
+          const shown = on.includes(k);
+          pick.appendChild(GypsyUI.checkbox(k.name, shown, v => {
+            if (v) S.kindsHidden.delete(spec.key + k.id); else S.kindsHidden.add(spec.key + k.id);
+            renderCharts();
+          }, shown && on.length === 1));
+        }
+      }
+      panel.append(pick, chartBox, actions);
       box.appendChild(panel);
       panel.draw();
     }
@@ -1037,7 +1086,8 @@
     let last = 0, timer;
     new ResizeObserver(entries => {
       const w = entries[0].contentRect.width;
-      if (Math.abs(w - last) < 1 || !w) return;
+      if (!w) { last = 0; return; }   // hidden: charts redrawn now are narrow, so redraw when shown
+      if (Math.abs(w - last) < 1) return;
       last = w;
       clearTimeout(timer);
       timer = setTimeout(draw, 80);
@@ -1068,7 +1118,7 @@
       ...(f.ti ? [["Species", ...SCENARIOS.slice(0, f.tiCount).map(k => `GW ${k} (%)`), "Selection age (years)"],
                   ...TI_SPP.map(s => [s, ...TI_FIELDS.filter(x => !x.gw || x.gw <= f.tiCount)
                                        .map(x => (f.tiv[s]?.[x.key] != null ? Number(f.tiv[s][x.key]) : ""))]),
-                  ["Results in this workbook", sc(D)]] : []),
+                  ["Results in this workbook", gwLabel(D)]] : []),
     ];
     return XLSX.utils.aoa_to_sheet(aoa);
   }
@@ -1164,7 +1214,7 @@
     r.innerHTML = "";
     const h = (tag, text, cls) => { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; r.appendChild(e); return e; };
     h("h1", `GYPSY yield table report: ${D.label}`);
-    h("p", [$("sSummaryInfo").textContent, `Printed ${new Date().toLocaleDateString()}`, $("buildInfo").textContent].join(" · "), "small");
+    h("p", [summaryInfo(D), `Printed ${new Date().toLocaleDateString()}`, $("buildInfo").textContent].join(" · "), "small");
 
     h("h2", "Input data");
     const f = D.form;
@@ -1192,14 +1242,19 @@
     r.appendChild(makeTable(cu.head, cu.rows));
     h("p", cu.note, "small");
 
-    h("h2", "Charts");
-    const grid = document.createElement("div");
-    grid.className = "print-charts";
-    r.appendChild(grid);
-    for (const spec of chartSpecs(S.set)) {   // every projection, for comparison
-      const c = document.createElement("div");
-      grid.appendChild(c);
-      GypsyChart.line(c, { ...spec, height: 220 });
+    // As on the Charts tab: its filters and scenario menu
+    const chartPick = picked("chart");
+    const specs = chartSpecs(chartPick ? [chartPick] : S.set, true);
+    if (specs.length) {
+      h("h2", "Charts");
+      const grid = document.createElement("div");
+      grid.className = "print-charts";
+      r.appendChild(grid);
+      for (const spec of specs) {
+        const c = document.createElement("div");
+        grid.appendChild(c);
+        GypsyChart.line(c, { ...spec, height: 220 });
+      }
     }
     h("h2", `Yield table for ${D.label}`, "page-break");
     const y = yieldTable(D, "yield", 10);
@@ -1270,7 +1325,6 @@
     const ok = runStand();
     spinOff();
     if (ok) {
-      if (!S.live) $("sResults").scrollIntoView({ behavior: "smooth", block: "start" });
       S.live = true;
       $("sRun").disabled = true;   // results follow the inputs from here
     } else selectTab("s-input");
@@ -1291,8 +1345,23 @@
     for (const s of list) for (const f of FIELDS) $(`s_${f.key}_${s}`).value = "";
     changed();
   }
-  $("sClear").addEventListener("click", () => {
-    if (confirm("Clear all four species rows?")) clearSpecies(SPECIES);
+  $("sClear").addEventListener("click", () => clearSpecies(SPECIES));
+  // Back to a new form: all inputs and results, ready to Start again
+  $("sReset").addEventListener("click", () => {
+    if (!confirm("Reset all inputs and results?")) return;
+    clearTimeout(timer);
+    setForm({});
+    S.set = null;
+    S.live = false;
+    Object.assign(S.pick, { sum: null, culm: null, yield: null, chart: "all", export: null });
+    fillScenarios();
+    $("sMessages").innerHTML = "";
+    markStale(false);
+    showChecks([]);
+    $("sRun").disabled = !S.gypsy;
+    $("sStatus").textContent = S.gypsy ? "Ready" : "Loading model…";
+    selectTab("s-input");
+    store.set("single", "");
   });
   const RENDER = { sum: renderSummary, culm: renderCulm, yield: renderYield, chart: renderCharts, export: () => {} };
   for (const sel of document.querySelectorAll("#mode-single select[data-pick]"))
@@ -1300,12 +1369,17 @@
       S.pick[sel.dataset.pick] = sel.value;
       RENDER[sel.dataset.pick]();
     });
+  for (const c of CHARTS)
+    $("sChartList").appendChild(GypsyUI.checkbox(cap(c.noun) + c.suffix, true, on => {
+      if (on) S.chartsHidden.delete(c.key); else S.chartsHidden.add(c.key);
+      renderCharts();
+    }));
   $("sQuickChart").addEventListener("change", renderQuick);
   $("sYieldKind").addEventListener("change", renderYield);
   $("sYieldStep").addEventListener("change", renderYield);
   // Close the export menu when clicking elsewhere
   document.addEventListener("click", e => {
-    for (const id of ["sExportMenu", "sExampleMenu"]) if (!e.target.closest("#" + id)) $(id).open = false;
+    for (const id of ["sExportMenu", "sExampleMenu", "sChartMenu"]) if (!e.target.closest("#" + id)) $(id).open = false;
   });
 
   buildForm();
