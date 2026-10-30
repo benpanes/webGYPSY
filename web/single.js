@@ -50,7 +50,7 @@
   const TI_SPP = ["SW", "PL"];   // species with age-age correlations
   const SCENARIOS = [1, 2, 3];
   const TI_FIELDS = [
-    ...SCENARIOS.map(k => ({ key: `gw${k}`, label: `Scenario ${k}`, aria: `scenario ${k} genetic worth (%)`, step: "0.1" })),
+    ...SCENARIOS.map(k => ({ key: `gw${k}`, label: `GW ${k}`, aria: `GW ${k} genetic worth (%)`, step: "0.1" })),
     { key: "selAge", label: "Selection age (years)", aria: "selection age (years)", step: "1", def: "15" },
   ];
   const TI_WARN = "Tree improvement runs must use site index, or age and top height, from unimproved stands. " +
@@ -300,7 +300,7 @@
     if (!o.ti) return list;
     for (const k of SCENARIOS)
       if (TI_SPP.some(s => { const g = Number(o.tiv[s]?.[`gw${k}`]); return isPresent(o, s) && Number.isFinite(g) && g !== 0; }))
-        list.push({ k, name: `Scenario ${k}` });
+        list.push({ k, name: `GW ${k}` });
     return list;
   }
 
@@ -376,8 +376,8 @@
         const inStand = FIELDS.some(f => $(`s_${f.key}_${s}`).value !== "");
         const gws = SCENARIOS.map(k => {
           const gw = val(id(`gw${k}`));
-          if (gw === "bad") add(id(`gw${k}`), "err", `${sppLabel(s)}: scenario ${k} genetic worth is not a number.`);
-          else if (inStand && (gw < 0 || gw > 30)) add(id(`gw${k}`), "warn", `${sppLabel(s)}: scenario ${k} genetic worth is usually between 0 and 30%.`);
+          if (gw === "bad") add(id(`gw${k}`), "err", `${sppLabel(s)}: GW ${k} is not a number.`);
+          else if (inStand && (gw < 0 || gw > 30)) add(id(`gw${k}`), "warn", `${sppLabel(s)}: GW ${k} is usually between 0 and 30%.`);
           return gw;
         });
         if (sel === "bad") add(id("selAge"), "err", `${sppLabel(s)}: selection age is not a number.`);
@@ -607,17 +607,27 @@
       const card = sel.dataset.pick;
       sel.innerHTML = "";
       if (card === "chart") sel.add(new Option("All, overlapped", "all"));
-      for (const D of set) sel.add(new Option(sc(D) + scenarioGw(D), sc(D)));
+      for (const D of set) sel.add(new Option(gwLabel(D), sc(D)));
       if (set.length) sel.value = card === "chart" && S.pick.chart === "all" ? "all" : sc(picked(card));
       sel.parentElement.hidden = set.length < 2;
     }
   }
 
+  // A species' genetic worth in a scenario, e.g. "10%"
+  const gwPct = (D, s) => `${Number((D.init[`${lc(s)}_gw`] || 0).toFixed(2))}%`;
+
   // " (SW 10%, PL 5%)" for a scenario
   function scenarioGw(D) {
     if (!D.scenario.k) return "";
-    const parts = D.improved.map(s => `${s} ${fmt(D.init[`${lc(s)}_gw`], 1)}%`);
+    const parts = D.improved.map(s => `${s} ${gwPct(D, s)}`);
     return parts.length ? ` (${parts.join(", ")})` : "";
+  }
+
+  // Chart label for a projection: "Unimproved", or species and genetic
+  // worth: "SW 10%, PL 5%", or "SW 10%" for one species s
+  function gwLabel(D, s) {
+    if (!D.scenario.k) return sc(D);
+    return (s ? [s] : D.improved).map(x => `${x} ${gwPct(D, x)}`).join(", ");
   }
 
   function markStale(stale) {
@@ -834,7 +844,7 @@
     for (const E of set) {
       const i = D.set.indexOf(E);
       for (const [g, name, slot] of GROUPS.filter(([g]) => groups.includes(g)))
-        series.push({ label: many ? `${name} – ${sc(E)}` : name, slot: many ? i + 1 : slot,
+        series.push({ label: many ? `${name} – ${gwLabel(E)}` : name, slot: many ? i + 1 : slot,
                       dash: many ? ["con", "dec", "all"].indexOf(g) : 0, x: E.col.standage, y: E.col[prefix + g] });
     }
     return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`, series, xLabel: X_LABEL };
@@ -854,7 +864,7 @@
       series: D.present.flatMap(s => {
         const improved = many && set.some(E => E.improved.includes(s));
         return (improved ? set : [D]).map(E => ({
-          label: improved ? `${s} – ${sc(E)}` : s, slot: SPECIES.indexOf(s) + 1, dash: improved ? D.set.indexOf(E) : 0,
+          label: !improved ? s : E.scenario.k ? gwLabel(E, s) : `${s} – ${sc(E)}`, slot: SPECIES.indexOf(s) + 1, dash: improved ? D.set.indexOf(E) : 0,
           x: E.col.standage, y: E.col[prefix + lc(s)] }));
       }),
     });
@@ -889,7 +899,7 @@
     $("sSummaryTitle").textContent = D.label;
     const info = [`Stand age ${fmt(D.standAge, 0)}${D.form.standAge === "" ? ` (from the oldest species' total age, ${fmt(D.tmax, 1)})` : ""}`];
     info.push(`Percent stocking ${D.form.psflag ? "used" : "not used"}`, `BA adjustment ${D.form.baflag ? "on" : "off"}`);
-    if (D.form.ti) info.push(D.scenario.k ? `Tree improvement ${sc(D).toLowerCase()}${scenarioGw(D)}` : "Unimproved (tree improvement comparison)");
+    if (D.form.ti) info.push(D.scenario.k ? `Tree improvement ${sc(D)}${scenarioGw(D)}` : "Unimproved (tree improvement comparison)");
     $("sSummaryInfo").textContent = info.join(" · ");
 
     const calc = calcTable(D);
@@ -940,7 +950,7 @@
     if (D.set.length < 2) return;
     box.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
     for (const E of D.set) {
-      box.appendChild(GypsyUI.checkbox(sc(E), !S.scenariosHidden.has(sc(E)), on => {
+      box.appendChild(GypsyUI.checkbox(gwLabel(E), !S.scenariosHidden.has(sc(E)), on => {
         if (on) S.scenariosHidden.delete(sc(E)); else S.scenariosHidden.add(sc(E));
         renderQuick();
       }));
@@ -1013,7 +1023,7 @@
       ["Species", ...UTIL.map(x => x.label)],
       ...SPECIES.map((s, i) => [s, ...UTIL.map(x => utilOptions(f)[x.key][i])]), [],
       ["Tree improvement", f.ti ? "YES" : "NO"],
-      ...(f.ti ? [["Species", ...SCENARIOS.map(k => `Scenario ${k} genetic worth (%)`), "Selection age (years)"],
+      ...(f.ti ? [["Species", ...SCENARIOS.map(k => `GW ${k} (%)`), "Selection age (years)"],
                   ...TI_SPP.map(s => [s, ...TI_FIELDS.map(x => (f.tiv[s]?.[x.key] != null ? Number(f.tiv[s][x.key]) : ""))]),
                   ["Results in this workbook", sc(D)]] : []),
     ];
