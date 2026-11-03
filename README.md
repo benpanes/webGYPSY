@@ -127,7 +127,10 @@ allowing `dev`.
 </script>
 ```
 
-Options match `GYPSY_Sim()` in R: `sitype`, `agetype`, `simlen`, `psflag`,
+`readInput()` and `inputFromRows()` give each row its own site index, age
+and density type from its columns (`si` and `age` are read as site index at
+breast height age 50 and total age). Options match `GYPSY_Sim()` in R:
+`simlen`, `psflag`,
 `baflag`, `bh`, `sh`, `iter`, `tol`, `detail`, and the merchantability
 standard as arrays of four values (AW, SB, SW, PL): `stumpHt`, `stumpDob`,
 `topDib`. With `ti: true` the run is `GYPSY_Sim_TI()`, using the input's

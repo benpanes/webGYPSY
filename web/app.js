@@ -152,7 +152,7 @@
     } else if (src.kind === "xlsx") {
       all = src.sheets[Number($("sheet").value)].rows.map(r => r.slice());
     } else {
-      const blank = FIELDS.filter(f => !f.typed);   // typed columns can be assigned later
+      const blank = FIELDS.filter(f => !f.extra);   // other types can be assigned later
       all = [blank.map(f => f.key), blank.map(() => "")];
     }
     const ncol = Math.max(0, ...all.map(r => r.length));
@@ -422,19 +422,15 @@
       state.rows.forEach((r, i) => { if (!isBlankRow(r)) keep.push(i); });
       if (!keep.length) throw new Error("The input table has no data rows.");
       rowLabels = keep.map(i => i + 1);
-      const showAge = $("showAge").checked;
       ({ input, warnings } = GypsyAPI.inputFromRows(keep.map(i => state.rows[i]), state.mapping, {
-        ti: $("tiflag").checked, rowLabels,
-        sitype: showAge ? $("sitype").value : "B", agetype: showAge ? $("agetype").value : "T" }));
+        ti: $("tiflag").checked, rowLabels }));
     } catch (e) { message("runMessages", e.message, "err"); return; }
 
-    // Age and merchantability settings only apply while their boxes are
-    // ticked; otherwise the defaults (shown beside the boxes) are used
-    const age = $("showAge").checked;
+    // Merchantability settings only apply while their box is ticked;
+    // otherwise the defaults (shown beside the box) are used. Site index, age
+    // and density types come with each row's columns.
     const options = {
       simlen: num("simlen"), psflag: $("psflag").checked, baflag: $("baflag").checked, ti: $("tiflag").checked,
-      sitype:   age ? $("sitype").value : "B",
-      agetype:  age ? $("agetype").value : "T",
       ...merchCriteria(),
     };
     $("run").disabled = true;
@@ -540,7 +536,7 @@
       const info = document.createElement("span");
       info.className = "small";
       info.textContent = `${run.result.standLabels.length} stands · ${o.simlen} years · ${merchText(o)} · ` +
-        `SI type ${o.sitype}, age type ${o.agetype} · stocking ${o.psflag ? "on" : "off"}, BA ${o.baflag ? "on" : "off"}` +
+        `stocking ${o.psflag ? "on" : "off"}, BA ${o.baflag ? "on" : "off"}` +
         (o.ti ? " · tree improvement" : "");
       const spacer = document.createElement("span");
       spacer.className = "spacer";
@@ -1035,7 +1031,7 @@
   renderTableColumnPicker();
 
   // Optional settings: show the inputs, or the defaults in use
-  for (const [box, group, note] of [["showAge", "ageOptions", "ageDefault"], ["customMerch", "merchOptions", "merchDefault"]]) {
+  for (const [box, group, note] of [["customMerch", "merchOptions", "merchDefault"]]) {
     const sync = () => {
       $(group).classList.toggle("hidden", !$(box).checked);
       $(note).classList.toggle("hidden", $(box).checked);

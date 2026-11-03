@@ -9,11 +9,13 @@
 //   GypsyAPI.run(module, input, options)     -> { standLabels, rows, init, warnings }
 //   GypsyAPI.toCSV(table, standLabels)       -> CSV text
 //
-// Input fields are named as the arguments of GYPSY_Sim() in R: stand,
-// stand_age, spp, n, si, age, ht, ps, ba (one row per stand and species),
-// and for tree improvement (GYPSY_Sim_TI(), option ti: true) gw and sel_age.
-// si and age are of the run's types (options sitype, agetype); columns of a
-// set type (si_b, si_t, age_t, age_b, age_s, n0) let rows differ.
+// Input fields (one row per stand and species): stand, stand_age, spp, ht,
+// ps, ba; site index, age and density by type: si_b (BH age 50), si_t
+// (total age 50), age_t, age_b, age_s (total, breast height, stump height),
+// n, n0 (density, initial density); and for tree improvement (GYPSY_Sim_TI(),
+// option ti: true) gw and sel_age. Each row's types go to the model, so rows
+// can differ. A file's si and age columns are read as si_b and age_t, as in
+// GYPSY_Sim()'s defaults.
 //
 // A plain script (not an ES module) so the page also works when opened
 // straight from disk; also loads in Node with require().
@@ -22,36 +24,35 @@
 (function (root) {
   "use strict";
 
+  // In the order of a file without column names (as GYPSY_Sim()'s arguments)
   const FIELDS = [
     { key: "stand",     label: "Stand",           required: true,  numeric: false },
     { key: "stand_age", label: "Stand age",       required: true,  numeric: true  },
     { key: "spp",       label: "Species",         required: true,  numeric: false },
-    { key: "n",         label: "Density",         required: false, numeric: true  },
-    { key: "si",        label: "Site index",      required: false, numeric: true  },
-    { key: "age",       label: "Age",             required: false, numeric: true  },
+    { key: "n",         label: "Density",                  numeric: true, kind: "n" },
+    { key: "si_b",      label: "Site index, BH age 50",    numeric: true, kind: "si", plain: "si" },
+    { key: "age_t",     label: "Total age",                numeric: true, kind: "age", plain: "age" },
     { key: "ht",        label: "Top height",      required: false, numeric: true  },
     { key: "ps",        label: "Percent stocking", required: false, numeric: true },
     { key: "ba",        label: "Basal area",      required: false, numeric: true  },
     // Tree improvement only: not warned about when unassigned
     { key: "gw",        label: "Genetic worth",   required: false, numeric: true, ti: true },
     { key: "sel_age",   label: "Selection age",   required: false, numeric: true, ti: true },
-    // Of a set type, so rows can differ; not warned about when unassigned
-    { key: "si_b",  label: "Site index, BH age 50",    required: false, numeric: true, typed: true },
-    { key: "si_t",  label: "Site index, total age 50", required: false, numeric: true, typed: true },
-    { key: "age_t", label: "Total age",                required: false, numeric: true, typed: true },
-    { key: "age_b", label: "Breast height age",        required: false, numeric: true, typed: true },
-    { key: "age_s", label: "Stump height age",         required: false, numeric: true, typed: true },
-    { key: "n0",    label: "Initial density (N0)",     required: false, numeric: true, typed: true },
+    // Other types; not in a new table, and not warned about when unassigned
+    { key: "si_t",  label: "Site index, total age 50", numeric: true, kind: "si", extra: true },
+    { key: "age_b", label: "Breast height age",        numeric: true, kind: "age", extra: true },
+    { key: "age_s", label: "Stump height age",         numeric: true, kind: "age", extra: true },
+    { key: "n0",    label: "Initial density (N0)",     numeric: true, kind: "n", extra: true },
   ];
 
   // When a row has more than one value of a kind, the first type here is used
   const KINDS = [
-    { name: "site index", key: "si", type: "sitype", order: ["B", "T"],
+    { name: "site index", key: "si", type: "sitype",
       cols: [["si_b", "B"], ["si_t", "T"]], words: { B: "SI at BH age 50", T: "SI at total age 50" } },
-    { name: "age", key: "age", type: "agetype", order: ["T", "B", "S"],
+    { name: "age", key: "age", type: "agetype",
       cols: [["age_t", "T"], ["age_b", "B"], ["age_s", "S"]], words: { T: "total age", B: "breast height age", S: "stump height age" } },
-    { name: "density", key: "n", type: "ntype", order: ["N", "N0"],
-      cols: [["n0", "N0"]], words: { N: "density", N0: "initial density (N0)" } },
+    { name: "density", key: "n", type: "ntype",
+      cols: [["n", "N"], ["n0", "N0"]], words: { N: "density", N0: "initial density (N0)" } },
   ];
   const SPECIES = ["AW", "SB", "SW", "PL"];
 
@@ -62,14 +63,12 @@
     stand_age: ["stand_age", "standage"],
     spp:       ["spp", "species", "sp", "spec"],
     n:         ["n", "density", "stems", "sph", "tph", "stemsha", "nha"],
-    si:        ["si", "siteindex", "site_index"],
-    age:       ["age"],
     ht:        ["ht", "topht", "toph", "topheight", "height"],
     ps:        ["ps", "percentstocking", "stocking"],
     ba:        ["ba", "basalarea", "baha"],
-    si_b:      ["si_b", "si_bh", "sibh", "sitebh"],
+    si_b:      ["si_b", "si_bh", "sibh", "sitebh", "si", "siteindex", "site_index"],
     si_t:      ["si_t", "sit", "sitetotal"],
-    age_t:     ["age_t", "totage", "totalage", "tage"],
+    age_t:     ["age_t", "totage", "totalage", "tage", "age"],
     age_b:     ["age_b", "bhage", "bh_age", "breastheightage"],
     age_s:     ["age_s", "stumpage", "stump_age", "shage"],
     n0:        ["n0", "den0", "initialdensity", "n_0"],
@@ -167,19 +166,21 @@
 
   // Data rows (no header) + field -> column mapping -> model input. Missing
   // optional fields are treated as missing values, with a warning (tree
-  // improvement fields only when ti is true, typed columns never); missing
-  // required fields are an error. With typed columns assigned, each row gets
-  // its own type (input.sitype, agetype, ntype): the first given by KINDS,
-  // with the plain si / age column of the run's type (sitype, agetype).
+  // improvement fields only when ti is true; site index and age when no
+  // column of the kind is assigned); missing required fields, or no density
+  // column, are an error. Each row gets one value of each kind with its type
+  // (input.si / sitype, age / agetype, n / ntype): the first given in KINDS.
   // rowLabels: row numbers for messages (default 1, 2, ...).
-  function inputFromRows(rows, mapping, { ti = false, sitype = "B", agetype = "T", rowLabels } = {}) {
+  function inputFromRows(rows, mapping, { ti = false, rowLabels } = {}) {
     const has = k => mapping[k] >= 0;
+    const kindAssigned = k => KINDS.find(x => x.key === k).cols.some(([c]) => has(c));
     const missingReq = FIELDS.filter(f => f.required && !has(f.key)).map(f => f.key);
-    if (!has("n") && !has("n0")) missingReq.push("n (or n0)");
+    if (!kindAssigned("n")) missingReq.push("density (n or n0)");
     if (missingReq.length) throw new Error("Required column(s) not assigned: " + missingReq.join(", "));
-    // (no warning for si or age when a typed column of that kind is assigned)
-    const typedFor = key => KINDS.some(k => k.key === key && k.cols.some(([c]) => has(c)));
-    const missingOpt = FIELDS.filter(f => !f.required && !f.typed && f.key !== "n" && (ti || !f.ti) && !has(f.key) && !typedFor(f.key)).map(f => f.key);
+    const missingOpt = [
+      ...FIELDS.filter(f => !f.required && !f.kind && (ti || !f.ti) && !has(f.key)).map(f => f.key),
+      ...["si", "age"].filter(k => !kindAssigned(k)).map(k => KINDS.find(x => x.key === k).name),
+    ];
     const warnings = missingOpt.length
       ? ["Column(s) not assigned, treated as missing: " + missingOpt.join(", ")]
       : [];
@@ -192,17 +193,14 @@
     for (const f of FIELDS) if (f.numeric) input[f.key] = col(f.key, toNumber);
 
     // One value of each kind per row, with its type
-    const run = { si: sitype, age: agetype, n: "N" };
     const label = i => (rowLabels ? rowLabels[i] : i + 1);
     for (const k of KINDS) {
-      const cols = [[k.key, run[k.key]], ...k.cols].filter(([c]) => has(c))
-        .sort((a, b) => k.order.indexOf(a[1]) - k.order.indexOf(b[1]));
-      if (!k.cols.some(([c]) => has(c))) continue;   // the run's type for every row
+      const cols = k.cols.filter(([c]) => has(c));
       const value = [], type = [], both = new Map();
       rows.forEach((_, i) => {
         const given = cols.filter(([c]) => Number.isFinite(input[c][i]));
-        const [c, t] = given[0] || cols[0] || [k.key, run[k.key]];
-        value.push(input[c] ? input[c][i] : NaN);
+        const [c, t] = given[0] || cols[0] || k.cols[0];
+        value.push(input[c][i]);
         type.push(t);
         for (const [, u] of given.slice(1)) {
           const pair = `${t}|${u}`;
@@ -226,7 +224,7 @@
     const header = (rows.shift() || []).map(h => h.trim());
     const lower = header.map(h => h.toLowerCase());
     const mapping = {};
-    for (const f of FIELDS) mapping[f.key] = lower.indexOf(f.key);
+    for (const f of FIELDS) mapping[f.key] = [f.key, f.plain].filter(Boolean).map(k => lower.indexOf(k)).find(i => i >= 0) ?? -1;
     return inputFromRows(rows, mapping, opts);
   }
 
