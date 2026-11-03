@@ -653,12 +653,19 @@
 
   const initValues = res => Object.fromEntries(res.init.names.map((n, k) => [n, res.init.columns[k][0]]));
 
+  // Status beside the spinner: green when the projection ran ("ok"), red
+  // when it didn't ("err"), else plain
+  function setStatus(text, state = "") {
+    $("sStatus").textContent = text;
+    $("sStatus").className = "small" + (state ? " status-" + state : "");
+  }
+
   function runStand() {
     $("sMessages").innerHTML = "";
     const list = check();
     showChecks(list);
     if (list.some(c => c.level === "err")) {
-      $("sStatus").textContent = "Fix the errors in the Stand tab to run";
+      setStatus("Fix the errors in the Stand tab to run", "err");
       markStale(true);
       return false;
     }
@@ -698,7 +705,7 @@
       const after = checkAfter(set[0]);
       showChecks([...list, ...after]);
       if (after.some(c => c.level === "err")) {
-        $("sStatus").textContent = "Fix the errors in the Stand tab to run";
+        setStatus("Fix the errors in the Stand tab to run", "err");
         markStale(true);
         return false;
       }
@@ -707,11 +714,11 @@
       markStale(false);
       fillScenarios();
       render();
-      $("sStatus").textContent = `Projected ${set.length > 1 ? set.length + " scenarios " : ""}to stand age ${to} in ${ms < 1000 ? ms.toFixed(0) + " ms" : (ms / 1000).toFixed(1) + " s"}`;
+      setStatus(`Projected ${set.length > 1 ? set.length + " scenarios " : ""}to stand age ${to} in ${ms < 1000 ? ms.toFixed(0) + " ms" : (ms / 1000).toFixed(1) + " s"}`, "ok");
       return true;
     } catch (e) {
       message("sMessages", e.message, "err");
-      $("sStatus").textContent = "Stopped with an error";
+      setStatus("Stopped with an error", "err");
       markStale(true);
       return false;
     }
@@ -1365,6 +1372,17 @@
       spinStart = 0;
     }, Math.max(0, SPIN_MIN_MS - (performance.now() - spinStart)));
   }
+  // A run stopped by errors: flash (style.css .spinner.error), then hide
+  function spinError() {
+    const sp = $("sSpinner");
+    clearTimeout(spinTimer);
+    spinStart = 0;
+    sp.classList.remove("on", "error");
+    void sp.offsetWidth;   // restart the flashes
+    sp.classList.add("error");
+    spinTimer = setTimeout(() => sp.classList.remove("error"), 1300);
+  }
+  const spinDone = ok => (ok ? spinOff() : spinError());
 
   let timer;
   function changed() {
@@ -1373,7 +1391,7 @@
     const rerun = S.live && S.gypsy;
     if (rerun) spinOn();
     timer = setTimeout(() => {
-      if (rerun) { runStand(); spinOff(); }
+      if (rerun) spinDone(runStand());
       else showChecks(check());
     }, 350);
   }
@@ -1409,7 +1427,7 @@
   $("sRun").addEventListener("click", () => {
     spinOn();
     const ok = runStand();
-    spinOff();
+    spinDone(ok);
     if (ok) {
       S.live = true;
       $("sRun").disabled = true;   // results follow the inputs from here
@@ -1463,7 +1481,7 @@
     markStale(false);
     showChecks([]);
     $("sRun").disabled = !S.gypsy;
-    $("sStatus").textContent = S.gypsy ? "Ready" : "Loading model…";
+    setStatus(S.gypsy ? "Ready" : "Loading model…");
     selectTab("s-input");
     store.set("single", "");
   });
@@ -1493,6 +1511,6 @@
   GypsyUI.model.then(m => {
     S.gypsy = m;
     $("sRun").disabled = false;
-    $("sStatus").textContent = "Ready";
-  }).catch(e => { $("sStatus").textContent = "Could not load the model: " + e; });
+    setStatus("Ready");
+  }).catch(e => setStatus("Could not load the model: " + e, "err"));
 })();
