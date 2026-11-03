@@ -107,6 +107,10 @@ td.warn input, .field.warn input { border-color: var(--warn-border); background:
 .scenario-pick[hidden] { display: none; }
 .menu-body .scenario-pick { padding: 4px 8px 8px; }
 .chart-pick { align-items: center; margin-bottom: 12px; }
+/* Species table: with all columns, each type has its own column and label */
+#sSpecies .col-label { display: none; }
+#sSpecies.all-cols .col-label { display: inline; }
+#sSpecies.all-cols thead select { display: none; }
 #sChartList label.check { padding: 3px 8px; }
 /* The page's width doesn't change when redrawing charts briefly shortens it */
 html { scrollbar-gutter: stable; }

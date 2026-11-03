@@ -42,6 +42,15 @@
     { key: "ps",  label: "Percent stocking (%)", step: "0.1" },
     { key: "ba",  label: "Basal area (m²/ha)", step: "0.1" },
   ];
+  // With all columns shown, a species can fill more than one type of a field;
+  // the first given in this order is used (the others are warned about)
+  const PRIORITY = { age: ["T", "B", "S"], ht: ["ht", "siB", "siT"], n: ["n", "n0"] };
+  const KIND_FIELD = { age: "age", ht: "height or site index", n: "density" };
+  const SHORT = { T: "total age", B: "BH age", S: "stump age", ht: "top height", siB: "SI (BH)", siT: "SI (total)", n: "density", n0: "N0" };
+  const KIND_FIELDS = FIELDS.filter(f => f.kinds);
+  // Input box of a species' field (of one type, for fields with types)
+  const cellId = (f, s, kind) => (f.kinds ? `s_${f.key}_${kind}_${s}` : `s_${f.key}_${s}`);
+  const cellsOf = (f, s) => (f.kinds ? Object.keys(f.kinds).map(k => cellId(f, s, k)) : [cellId(f, s)]);
   const UTIL = [
     { key: "stumpDob", label: "Stump DOB (cm)",   def: 15,  step: "0.5" },
     { key: "topDib",   label: "Top DIB (cm)",     def: 10,  step: "0.5" },
@@ -117,6 +126,7 @@
     result: null,      // last successful run (see derive())
     live: false,       // after the first run, re-run as inputs change
     tiCount: TI_DEFAULT,   // scenario columns on the tree improvement card
+    allCols: false,        // species table shows every type of age, height and density
     set: null,         // projections of the last run: unimproved, then scenarios
     // Projection shown on each card, by name; "all" overlaps them (charts)
     pick: { sum: null, culm: null, yield: null, chart: "all", export: null },
@@ -133,18 +143,22 @@
     const th0 = document.createElement("th");
     th0.textContent = "Species";
     hr.appendChild(th0);
+    // Fields with types get a column per type: one shown with a menu, or all
+    // with labels (Show all columns)
     for (const f of FIELDS) {
-      const th = document.createElement("th");
-      if (f.kinds) {
-        const sel = document.createElement("select");
-        sel.id = `sKind_${f.key}`;
-        sel.setAttribute("aria-label", "Column holds");
-        for (const [k, label] of Object.entries(f.kinds)) sel.add(new Option(label, k));
-        sel.value = S.kinds[f.key];
-        sel.addEventListener("change", () => { S.kinds[f.key] = sel.value; changed(); });
-        th.appendChild(sel);
-      } else th.textContent = f.label;
-      hr.appendChild(th);
+      for (const kind of f.kinds ? Object.keys(f.kinds) : [null]) {
+        const th = document.createElement("th");
+        if (kind) {
+          th.dataset.col = `${f.key}:${kind}`;
+          const sel = document.createElement("select");
+          sel.setAttribute("aria-label", "Column holds");
+          for (const [k, label] of Object.entries(f.kinds)) sel.add(new Option(label, k));
+          sel.value = kind;
+          sel.addEventListener("change", () => { switchKind(f, kind, sel.value); sel.value = kind; });
+          th.append(sel, Object.assign(document.createElement("span"), { className: "col-label", textContent: f.kinds[kind] }));
+        } else th.textContent = f.label;
+        hr.appendChild(th);
+      }
     }
     hr.appendChild(document.createElement("th"));   // above the clear buttons
     const body = t.createTBody();
@@ -156,18 +170,22 @@
       th.title = SPP_NAMES[s];
       tr.appendChild(th);
       for (const f of FIELDS) {
-        const inp = document.createElement("input");
-        Object.assign(inp, { type: "number", step: f.step, min: "0", id: `s_${f.key}_${s}` });
-        inp.setAttribute("aria-label", `${SPP_NAMES[s]}, ${f.label || f.kinds[S.kinds[f.key]]}`);
-        tr.insertCell().appendChild(inp);
+        for (const kind of f.kinds ? Object.keys(f.kinds) : [null]) {
+          const inp = document.createElement("input");
+          Object.assign(inp, { type: "number", step: f.step, min: "0", id: cellId(f, s, kind) });
+          inp.setAttribute("aria-label", `${SPP_NAMES[s]}, ${kind ? f.kinds[kind] : f.label}`);
+          const td = tr.insertCell();
+          if (kind) td.dataset.col = `${f.key}:${kind}`;
+          td.appendChild(inp);
+        }
       }
-      const clear = GypsyUI.button("Clear", () => { clearSpecies([s]); $(`s_${FIELDS[0].key}_${s}`).focus(); }, "link");
+      const clear = GypsyUI.button("Clear", () => { clearSpecies([s]); firstCell(s).focus(); }, "link");
       clear.type = "button";
       clear.setAttribute("aria-label", `Clear ${SPP_NAMES[s]}`);
       tr.insertCell().appendChild(clear);
     }
     const foot = t.createTFoot().insertRow();
-    foot.insertCell().colSpan = FIELDS.length + 1;
+    foot.insertCell().colSpan = FIELDS.reduce((n, f) => n + (f.kinds ? Object.keys(f.kinds).length : 1), 1);
     foot.insertCell().appendChild($("sClear"));
 
     const ti = $("sTiTable");
@@ -248,6 +266,57 @@
     }
   }
 
+  // Columns shown: one type of each field (S.kinds), or all of them
+  function showCols() {
+    $("sSpecies").classList.toggle("all-cols", S.allCols);
+    for (const el of document.querySelectorAll("#sSpecies [data-col]")) {
+      const [key, kind] = el.dataset.col.split(":");
+      el.hidden = !S.allCols && S.kinds[key] !== kind;
+    }
+    $("sAllCols").checked = S.allCols;
+  }
+
+  // A column's menu: the column now holds the other type, keeping its values
+  function switchKind(f, from, to) {
+    if (from === to) return;
+    for (const s of SPECIES) {
+      const a = $(cellId(f, s, from)), b = $(cellId(f, s, to));
+      if (b.value === "") { b.value = a.value; a.value = ""; }
+    }
+    S.kinds[f.key] = to;
+    showCols();
+    changed();
+  }
+
+  const firstCell = s => [...document.querySelectorAll(`#sSpecies input[id$="_${s}"]`)].find(i => !i.closest("[hidden]"));
+
+  // A species' row: per field, the type used, its box and value ("" when
+  // empty, "bad" when not a number), and boxes given but not used
+  function readRow(s) {
+    const row = { fields: {}, ignored: [] };
+    for (const f of FIELDS) {
+      const kinds = !f.kinds ? [null] : S.allCols ? PRIORITY[f.key] : [S.kinds[f.key]];
+      const given = kinds.filter(k => $(cellId(f, s, k)).value !== "" || $(cellId(f, s, k)).validity.badInput);
+      const kind = given[0] ?? kinds[0];
+      const el = $(cellId(f, s, kind));
+      row.fields[f.key] = { kind, id: el.id, val: el.validity.badInput ? "bad" : el.value };
+      for (const k of given.slice(1)) row.ignored.push({ f, kind: k, used: kind, id: cellId(f, s, k) });
+    }
+    return row;
+  }
+
+  // Fields whose type differs between species or within a species (then
+  // all columns are needed to show them)
+  function mixedFields() {
+    const out = [];
+    for (const f of KIND_FIELDS) {
+      const used = new Set();
+      for (const s of SPECIES) for (const k of Object.keys(f.kinds)) if ($(cellId(f, s, k)).value !== "") used.add(k);
+      if (used.size > 1) out.push(f);
+    }
+    return out;
+  }
+
   // Form -> plain object of strings (also what is remembered between visits)
   function formState() {
     const o = {
@@ -255,6 +324,7 @@
       projectTo: $("sProjectTo").value, psflag: $("sPsflag").checked, baflag: $("sBaflag").checked,
       kinds: { ...S.kinds }, spp: {}, util: {}, utilAll: {}, utilBySpp: utilSpp(),
       ti: !$("sTiCard").hidden, tiv: {}, tiCount: S.tiCount,
+      allCols: S.allCols, cells: {},
     };
     for (const x of UTIL) if ($(`s_${x.key}_all`).value !== "") o.utilAll[x.key] = $(`s_${x.key}_all`).value;
     for (const s of TI_SPP) {
@@ -263,8 +333,16 @@
       if (Object.keys(t).length) o.tiv[s] = t;
     }
     for (const s of SPECIES) {
-      const r = {};
-      for (const f of FIELDS) if ($(`s_${f.key}_${s}`).value !== "") r[f.key] = $(`s_${f.key}_${s}`).value;
+      // spp: the values used, with their types; cells: every box given
+      const r = {}, row = readRow(s);
+      for (const f of FIELDS) {
+        const x = row.fields[f.key];
+        if (x.val !== "" && x.val !== "bad") {
+          r[f.key] = x.val;
+          if (f.kinds) (r.kinds ||= {})[f.key] = x.kind;
+        }
+        for (const id of cellsOf(f, s)) if ($(id).value !== "") o.cells[id] = $(id).value;
+      }
       if (Object.keys(r).length) o.spp[s] = r;
       const u = {};
       for (const x of UTIL) if ($(`s_${x.key}_${s}`).value !== "") u[x.key] = $(`s_${x.key}_${s}`).value;
@@ -280,11 +358,20 @@
     $("sPsflag").checked = o.psflag !== false;
     $("sBaflag").checked = o.baflag !== false;
     Object.assign(S.kinds, { age: "T", ht: "ht", n: "n" }, o.kinds);
-    for (const f of FIELDS) if (f.kinds) $(`sKind_${f.key}`).value = S.kinds[f.key];
+    S.allCols = !!o.allCols;
     for (const s of SPECIES) {
-      for (const f of FIELDS) $(`s_${f.key}_${s}`).value = o.spp?.[s]?.[f.key] ?? "";
+      for (const f of FIELDS) for (const id of cellsOf(f, s)) $(id).value = "";
+      // Every box saved, else (examples, older saved forms) values of the
+      // form's or the species' type
+      if (o.cells) for (const f of FIELDS) for (const id of cellsOf(f, s)) $(id).value = o.cells[id] ?? "";
+      else for (const f of FIELDS) {
+        const v = o.spp?.[s]?.[f.key];
+        if (v != null) $(cellId(f, s, o.spp[s].kinds?.[f.key] ?? S.kinds[f.key])).value = v;
+      }
       for (const x of UTIL) $(`s_${x.key}_${s}`).value = o.util?.[s]?.[x.key] ?? "";
     }
+    if (!S.allCols && mixedFields().length) S.allCols = true;
+    showCols();
     for (const x of UTIL) $(`s_${x.key}_all`).value = o.utilAll?.[x.key] ?? "";
     // Forms saved before the switch had only species limits
     setUtilSpp(o.utilBySpp ?? Object.keys(o.util || {}).length > 0);
@@ -389,28 +476,34 @@
 
     let present = 0;
     for (const s of SPECIES) {
-      const v = {};
-      for (const f of FIELDS) v[f.key] = val(`s_${f.key}_${s}`);
+      const row = readRow(s), v = {}, kind = {};
+      for (const f of FIELDS) {
+        const x = row.fields[f.key];
+        v[f.key] = x.val === "bad" ? "bad" : x.val === "" ? NaN : Number(x.val);
+        kind[f.key] = x.kind;
+      }
       const given = k => Number.isFinite(v[k]);
-      for (const f of FIELDS) if (v[f.key] === "bad") add(`s_${f.key}_${s}`, "err", `${sppLabel(s)}: not a number.`);
+      const id = k => row.fields[k].id;
+      for (const f of FIELDS) if (v[f.key] === "bad") add(id(f.key), "err", `${sppLabel(s)}: not a number.`);
       if (!FIELDS.some(f => given(f.key) || v[f.key] === "bad")) continue;
       present++;
-      const id = k => `s_${k}_${s}`;
-      const ageName = AGE_KINDS[S.kinds.age].toLowerCase();
-      const htName = S.kinds.ht === "ht" ? "top height" : "site index";
-      const nName = S.kinds.n === "n" ? "density" : "initial density";
+      for (const x of row.ignored)
+        add(x.id, "warn", `${sppLabel(s)}: both ${SHORT[x.used]} and ${SHORT[x.kind]} are given for ${KIND_FIELD[x.f.key]}; ${SHORT[x.used]} is used.`);
+      const ageName = AGE_KINDS[kind.age].toLowerCase();
+      const htName = kind.ht === "ht" ? "top height" : "site index";
+      const nName = kind.n === "n" ? "density" : "initial density";
 
       if (!given("age")) add(id("age"), "err", `${sppLabel(s)}: ${ageName} is needed.`);
       if (!given("ht"))  add(id("ht"),  "err", `${sppLabel(s)}: ${htName} is needed.`);
       if (!given("n"))   add(id("n"),   "err", `${sppLabel(s)}: ${nName} is needed.`);
 
-      if (given("age") && S.kinds.ht === "ht") {
+      if (given("age") && kind.ht === "ht") {
         const min = s === "AW" || s === "PL" ? 7.5 : 9.5;
         if (v.age < min) add(id("age"), "err", `${sppLabel(s)}: age must be at least ${min} years to calculate a site index from top height.`);
       }
       if (given("ht")) {
-        if (S.kinds.ht === "ht") {
-          const min = s === "AW" || S.kinds.age === "B" ? 1.3 : 0.3;
+        if (kind.ht === "ht") {
+          const min = s === "AW" || kind.age === "B" ? 1.3 : 0.3;
           if (v.ht < min) add(id("ht"), "err", `${sppLabel(s)}: top height must be at least ${min} m.`);
           else if (v.ht > 35) add(id("ht"), "warn", `${sppLabel(s)}: top height over 35 m is unusual.`);
         } else if (v.ht < 5 || v.ht > 30) add(id("ht"), "warn", `${sppLabel(s)}: site index is usually between 5 and 30 m.`);
@@ -426,7 +519,7 @@
         else if (v.ps > 0 && v.ps <= 1) add(id("ps"), "warn", `${sppLabel(s)}: percent stocking of 1 or less may have been entered as a proportion.`);
       } else if (ps) add(id("ps"), "err", `${sppLabel(s)}: percent stocking is needed while "Use percent stocking" is ticked.`);
     }
-    if (!present) add("s_age_AW", "err", "Fill in at least one species.");
+    if (!present) add(firstCell("AW").id, "err", "Fill in at least one species.");
 
     if (!$("sTiCard").hidden) {
       add("sTiCard", "warn", TI_WARN);
@@ -434,7 +527,7 @@
       for (const s of TI_SPP) {
         const id = k => `s_${k}_${s}`;
         const sel = val(id("selAge"));
-        const inStand = FIELDS.some(f => $(`s_${f.key}_${s}`).value !== "");
+        const inStand = FIELDS.some(f => cellsOf(f, s).some(i => $(i).value !== ""));
         const gws = SCENARIOS.map(k => {
           const gw = val(id(`gw${k}`));
           if (gw === "bad") add(id(`gw${k}`), "err", `${sppLabel(s)}: GW ${k} is not a number.`);
@@ -524,7 +617,8 @@
   function modelInput(o, standAge, nOverride = {}, k = 0) {
     const present = SPECIES.filter(s => isPresent(o, s));
     const num = x => (x == null || x === "" ? NaN : Number(x));
-    const si = S.kinds.ht !== "ht";
+    const kind = (s, k) => o.spp[s].kinds?.[k] ?? o.kinds[k];
+    const si = s => kind(s, "ht") !== "ht";
     return {
       present,
       input: {
@@ -532,9 +626,13 @@
         stand_age: present.map(() => standAge),
         spp: present,
         n:   present.map(s => nOverride[s] ?? num(o.spp[s].n)),
-        si:  present.map(s => (si ? num(o.spp[s].ht) : NaN)),
+        si:  present.map(s => (si(s) ? num(o.spp[s].ht) : NaN)),
         age: present.map(s => num(o.spp[s].age)),
-        ht:  present.map(s => (si ? NaN : num(o.spp[s].ht))),
+        ht:  present.map(s => (si(s) ? NaN : num(o.spp[s].ht))),
+        // Each species' own types (with all columns they can differ)
+        sitype:  present.map(s => (kind(s, "ht") === "siT" ? "T" : "B")),
+        agetype: present.map(s => kind(s, "age")),
+        ntype:   present.map(s => (kind(s, "n") === "n0" ? "N0" : "N")),
         ps:  present.map(s => num(o.spp[s].ps)),
         ba:  present.map(s => num(o.spp[s].ba)),
         // In a scenario, a missing SW or PL genetic worth is 0
@@ -555,36 +653,6 @@
 
   const initValues = res => Object.fromEntries(res.init.names.map((n, k) => [n, res.init.columns[k][0]]));
 
-  // Observed densities that give the entered initial densities (N0): each
-  // species in turn by bisection on the log of density, repeated until no
-  // density changes (the conifers' N0 also depends on aspen density).
-  // Observed density is at most N0; very low densities give no N0, which
-  // counts as too low.
-  function solveN0(o, opts, k = 0) {
-    const target = {};
-    for (const s of SPECIES) if (isPresent(o, s)) target[s] = Number(o.spp[s].n);
-    const n = { ...target };
-    const den0 = s => initValues(GypsyAPI.run(S.gypsy, modelInput(o, 100, n, k).input, { ...opts, simlen: 1, ti: k > 0 }))[`${lc(s)}_den0`];
-    for (let sweep = 0; sweep < 20; sweep++) {
-      let moved = 0;
-      for (const s of Object.keys(target)) {
-        let lo = 0, hi = Math.log(target[s] * 1.5);
-        const before = n[s];
-        for (let i = 0; i < 80 && hi - lo > 1e-13; i++) {
-          n[s] = Math.exp((lo + hi) / 2);
-          const d = den0(s);
-          if (Number.isFinite(d) && d > target[s]) hi = Math.log(n[s]); else lo = Math.log(n[s]);
-        }
-        const d = den0(s);
-        if (!(Math.abs(d - target[s]) <= 1e-6 * target[s]))
-          throw new Error(`No ${s} density gives an initial density (N0) of ${target[s]} stems/ha with the other inputs.`);
-        moved = Math.max(moved, Math.abs(n[s] - before) / target[s]);
-      }
-      if (moved < 1e-9) return n;
-    }
-    throw new Error("The densities for the initial densities (N0) given could not be found.");
-  }
-
   function runStand() {
     $("sMessages").innerHTML = "";
     const list = check();
@@ -597,12 +665,11 @@
     const o = formState();
     const opts = {
       psflag: o.psflag, baflag: o.baflag,
-      sitype: S.kinds.ht === "siT" ? "T" : "B", agetype: S.kinds.age,
       ...utilOptions(o),
     };
     try {
       const t0 = performance.now();
-      const nObs = S.kinds.n === "n0" ? solveN0(o, opts) : {};
+      const nObs = {};   // initial densities (N0) are solved by the model
       // The leading total age, for the default stand age and the run length
       // (tree improvement doesn't change it)
       const first = GypsyAPI.run(S.gypsy, modelInput(o, 100, nObs).input, { ...opts, simlen: 1 });
@@ -616,7 +683,7 @@
       // Unimproved, then each tree improvement scenario
       const warnings = new Set();
       const set = scenarioList(o).map(sc => {
-        const n = sc.k && S.kinds.n === "n0" ? solveN0(o, opts, sc.k) : nObs;
+        const n = nObs;
         const { present, input } = modelInput(o, standAge, n, sc.k);
         const res = GypsyAPI.run(S.gypsy, input, { ...opts, simlen, ti: sc.k > 0 });
         for (const w of res.warnings) warnings.add(w);
@@ -1102,6 +1169,17 @@
     return { names, columns: names.map(n => D.col[n]) };
   }
 
+  // Species input columns for exports: heading and value per species
+  function inputColumns(f, present) {
+    if (!f.kinds) return { head: f.label, value: s => D_FORM.spp[s]?.[f.key] };
+    const kindOf = s => D_FORM.spp[s].kinds?.[f.key] ?? D_FORM.kinds[f.key];
+    const kinds = new Set(present.filter(s => D_FORM.spp[s][f.key] != null).map(kindOf));
+    if (kinds.size <= 1) return { head: f.kinds[[...kinds][0] ?? D_FORM.kinds[f.key]], value: s => D_FORM.spp[s]?.[f.key] };
+    return { head: cap(KIND_FIELD[f.key]), mixed: true,
+             value: s => (D_FORM.spp[s]?.[f.key] != null ? `${D_FORM.spp[s][f.key]} (${SHORT[kindOf(s)]})` : undefined) };
+  }
+  let D_FORM = null;
+
   function inputSheet(D) {
     const f = D.form;
     const aoa = [
@@ -1110,8 +1188,14 @@
       ["Stand age from", f.standAge === "" ? "Oldest species' total age (rounded up)" : "Entered"],
       ["Project to stand age", D.to], ["Use percent stocking", f.psflag ? "YES" : "NO"],
       ["Adjust to observed basal area", f.baflag ? "YES" : "NO"], [],
-      ["Species", AGE_KINDS[S.kinds.age], HT_KINDS[S.kinds.ht], DEN_KINDS[S.kinds.n], "Percent stocking (%)", "Basal area (m²/ha)"],
-      ...SPECIES.map(s => [s, ...FIELDS.map(x => (f.spp[s]?.[x.key] != null ? Number(f.spp[s][x.key]) : ""))]), [],
+      ...(() => {
+        D_FORM = f;
+        const present = SPECIES.filter(s => f.spp[s]);
+        const cols = FIELDS.map(x => inputColumns(x, present));
+        return [["Species", ...cols.map(c => c.head)],
+                ...SPECIES.map(s => [s, ...cols.map(c => { const v = f.spp[s] ? c.value(s) : undefined;
+                                                         return v == null ? "" : c.mixed ? v : Number(v); })])];
+      })(), [],
       ["Species", ...UTIL.map(x => x.label)],
       ...SPECIES.map((s, i) => [s, ...UTIL.map(x => utilOptions(f)[x.key][i])]), [],
       ["Tree improvement", f.ti ? "YES" : "NO"],
@@ -1219,8 +1303,10 @@
     h("h2", "Input data");
     const f = D.form;
     const util = utilOptions(f);
-    r.appendChild(makeTable(["Species", AGE_KINDS[S.kinds.age], HT_KINDS[S.kinds.ht], DEN_KINDS[S.kinds.n], "Percent stocking (%)", "Basal area (m²/ha)", "Utilization (DOB/DIB/stump)"],
-      D.present.map(s => [s, ...FIELDS.map(x => f.spp[s][x.key] ?? "–"),
+    D_FORM = f;
+    const cols = FIELDS.map(x => inputColumns(x, D.present));
+    r.appendChild(makeTable(["Species", ...cols.map(c => c.head), "Utilization (DOB/DIB/stump)"],
+      D.present.map(s => [s, ...cols.map(c => c.value(s) ?? "–"),
                           `${util.stumpDob[SPECIES.indexOf(s)]} cm / ${util.topDib[SPECIES.indexOf(s)]} cm / ${util.stumpHt[SPECIES.indexOf(s)]} m`])));
     h("h2", "Calculated attributes");
     const calc = calcTable(D);
@@ -1342,10 +1428,28 @@
   }
   // Empty species rows (results follow, as for any input change)
   function clearSpecies(list) {
-    for (const s of list) for (const f of FIELDS) $(`s_${f.key}_${s}`).value = "";
+    for (const s of list) for (const f of FIELDS) for (const id of cellsOf(f, s)) $(id).value = "";
     changed();
   }
   $("sClear").addEventListener("click", () => clearSpecies(SPECIES));
+  // Show all columns. Back to one of each only when every species uses the
+  // same types; that one is then shown.
+  $("sAllCols").addEventListener("change", () => {
+    const mixed = mixedFields();
+    if (!$("sAllCols").checked && mixed.length) {
+      $("sAllCols").checked = true;
+      $("sAllNote").hidden = false;
+      $("sAllNote").textContent = `Species use different ${mixed.map(f => KIND_FIELD[f.key]).join(", ")} types, so all columns stay shown. Clear the extra values to show one of each.`;
+      return;
+    }
+    $("sAllNote").hidden = true;
+    if (!$("sAllCols").checked)
+      for (const f of KIND_FIELDS)
+        for (const k of Object.keys(f.kinds)) if (SPECIES.some(s => $(cellId(f, s, k)).value !== "")) S.kinds[f.key] = k;
+    S.allCols = $("sAllCols").checked;
+    showCols();
+    changed();
+  });
   // Back to a new form: all inputs and results, ready to Start again
   $("sReset").addEventListener("click", () => {
     if (!confirm("Reset all inputs and results?")) return;

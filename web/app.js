@@ -152,7 +152,8 @@
     } else if (src.kind === "xlsx") {
       all = src.sheets[Number($("sheet").value)].rows.map(r => r.slice());
     } else {
-      all = [FIELDS.map(f => f.key), FIELDS.map(() => "")];
+      const blank = FIELDS.filter(f => !f.typed);   // typed columns can be assigned later
+      all = [blank.map(f => f.key), blank.map(() => "")];
     }
     const ncol = Math.max(0, ...all.map(r => r.length));
     all = all.map(r => { while (r.length < ncol) r.push(""); return r.map(c => String(c)); });
@@ -420,8 +421,11 @@
       const keep = [];
       state.rows.forEach((r, i) => { if (!isBlankRow(r)) keep.push(i); });
       if (!keep.length) throw new Error("The input table has no data rows.");
-      ({ input, warnings } = GypsyAPI.inputFromRows(keep.map(i => state.rows[i]), state.mapping, { ti: $("tiflag").checked }));
       rowLabels = keep.map(i => i + 1);
+      const showAge = $("showAge").checked;
+      ({ input, warnings } = GypsyAPI.inputFromRows(keep.map(i => state.rows[i]), state.mapping, {
+        ti: $("tiflag").checked, rowLabels,
+        sitype: showAge ? $("sitype").value : "B", agetype: showAge ? $("agetype").value : "T" }));
     } catch (e) { message("runMessages", e.message, "err"); return; }
 
     // Age and merchantability settings only apply while their boxes are

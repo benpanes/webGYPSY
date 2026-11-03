@@ -13,8 +13,10 @@
 // Input arrays (one value per row; missing values must be NaN, not null):
 //   stand (integer codes 0 .. n_stands - 1), standLabel (one per code),
 //   standAge, spp, n, si, age, ht, ps, ba, and with ti: gw, selAge
+//   optional sitype, agetype, ntype: a type per row (strings), so species can
+//   use different types; otherwise the options' types apply to every row
 // Options (all optional, defaults as in GYPSY_Sim() in R):
-//   sitype, agetype, simlen, psflag, baflag, bh, sh, iter, tol, detail,
+//   sitype, agetype, ntype, simlen, psflag, baflag, bh, sh, iter, tol, detail,
 //   stumpHt, stumpDob, topDib (arrays of 4, AW SB SW PL),
 //   ti (true: tree improvement, gypsy::SimTI, with input gw and selAge)
 // ---------------------------------------------------------------------------
@@ -55,11 +57,15 @@ val run_sim(val input, val options) {
     in.spp         = str(input["spp"]);
     in.n  = num(input["n"]);  in.si = num(input["si"]); in.age = num(input["age"]);
     in.ht = num(input["ht"]); in.ps = num(input["ps"]); in.ba  = num(input["ba"]);
+    if (!input["sitype"].isUndefined())  in.sitype  = str(input["sitype"]);
+    if (!input["agetype"].isUndefined()) in.agetype = str(input["agetype"]);
+    if (!input["ntype"].isUndefined())   in.ntype   = str(input["ntype"]);
 
     gypsy::SimOptions opt;
     auto has = [&](const char* k) { return !options.isUndefined() && !options[k].isUndefined(); };
     if (has("sitype"))  opt.sitype  = options["sitype"].as<std::string>();
     if (has("agetype")) opt.agetype = options["agetype"].as<std::string>();
+    if (has("ntype"))   opt.ntype   = options["ntype"].as<std::string>();
     if (has("simlen"))  opt.simlen  = options["simlen"].as<int>();
     if (has("psflag"))  opt.psflag  = options["psflag"].as<bool>();
     if (has("baflag"))  opt.baflag  = options["baflag"].as<bool>();

@@ -33,6 +33,12 @@ may change, so use a release for published work.
   `GYPSY_Sim()` does in R, with several simulations to compare, charts and a
   results table.
 
+Species can use different types of age, site index and density. In single
+stand mode, tick **Show all columns** on the Species card; in multiple stands
+mode, assign columns such as Breast height age, Site index (total age 50) or
+Initial density (N0). If a species has more than one of a kind, total age,
+site index at breast height age 50 and density are used, with a warning.
+
 Both modes can project improved seedlots (tree improvement), as
 `GYPSY_Sim_TI()` does in R: the SW and PL site index is raised for the
 seedlot's genetic worth for height at its selection age, using the age-age
