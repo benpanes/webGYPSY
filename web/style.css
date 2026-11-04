@@ -282,6 +282,7 @@ table.varmatrix td.all, table.varmatrix th:last-child { border-left: 1px solid v
 .chart .chart-muted { fill: var(--chart-muted); }
 .chart .chart-cross { stroke: var(--chart-axis); stroke-width: 1; }
 .chart .chart-dot { stroke: var(--chart-surface); stroke-width: 2; }
+.chart .chart-max { stroke: var(--chart-surface); stroke-width: 2; }
 .chart-tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border);
              border-radius: 6px; padding: 6px 8px; font-size: 0.8rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
              min-width: 150px; z-index: 5; }

@@ -806,7 +806,8 @@
                  : panel.label;
       const title = stands.length === 1 ? `${what} — Stand ${stands[0]}` : what;
       chartPanel(box, panel.key, { title, xLabel: X_LABELS[xKey],
-                                   yLabel: `${panel.label.split(",")[0]} (${panel.unit})`, series });
+                                   yLabel: `${panel.label.split(",")[0]} (${panel.unit})`, series,
+                                   markMax: panel.key.startsWith("mai_") });
     }
     $("chartNote").textContent = [...notes].join(" ");
   }

@@ -77,9 +77,9 @@
     document.body.dataset.mode = mode;
     store.set("mode", mode);
   }
-  $("modeSwitch").addEventListener("click", e => {
-    const b = e.target.closest("[data-mode]");
-    if (b) setMode(b.dataset.mode);
+  // Either side of the switch flips it
+  $("modeSwitch").addEventListener("click", () => {
+    setMode(document.body.dataset.mode === "multi" ? "single" : "multi");
   });
   setMode(store.get("mode") === "multi" ? "multi" : "single");
 

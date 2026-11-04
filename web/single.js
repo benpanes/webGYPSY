@@ -979,7 +979,8 @@
         series.push({ label: many ? `${name} – ${gwLabel(E)}` : name, slot: many ? i + 1 : slot,
                       dash: many ? ["con", "dec", "all"].indexOf(g) : 0, x: E.col.standage, y: E.col[prefix + g] });
     }
-    return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`, series, xLabel: X_LABEL };
+    return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`, series, xLabel: X_LABEL,
+             markMax: prefix.includes("mai") };
   }
 
   // Groups in the stand: conifer and deciduous when both are there (alone,
@@ -1020,7 +1021,8 @@
         }
       }
       const noun = c.m && !both ? `${kinds[0].name} ${c.noun}` : cap(c.noun);
-      specs.push({ key: c.key, title: noun + c.suffix, yLabel: `${noun} (${c.unit})`, xLabel: X_LABEL, series, chart: c });
+      specs.push({ key: c.key, title: noun + c.suffix, yLabel: `${noun} (${c.unit})`, xLabel: X_LABEL, series, chart: c,
+                   markMax: c.noun === "MAI" });
     }
     return specs;
   }
@@ -1406,10 +1408,9 @@
     changed();
     $(`s_gw${S.tiCount}_${TI_SPP[0]}`).focus();
   });
-  $("sUtilMode").addEventListener("click", e => {
-    const b = e.target.closest("[data-util]");
-    if (!b || (b.dataset.util === "spp") === utilSpp()) return;
-    setUtilSpp(b.dataset.util === "spp");
+  // Either side of the switch flips it
+  $("sUtilMode").addEventListener("click", () => {
+    setUtilSpp(!utilSpp());
     changed();
   });
   $("sUtilAll").addEventListener("input", utilBySpp);

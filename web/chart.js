@@ -5,6 +5,7 @@
 //     title, xLabel, yLabel,
 //     series: [{ label, slot (1-8), dash (0-5), x: [...], y: [...] }],
 //     height,   // SVG height in px (default 280); width fills the container
+//     markMax,  // true: a point at each series' highest value (e.g. peak MAI)
 //   })
 //
 // Colours come from CSS custom properties --series-1 .. --series-8 and the
@@ -72,7 +73,7 @@
     return Math.abs(xs[lo] - x) <= Math.abs(xs[hi] - x) ? lo : hi;
   }
 
-  function line(container, { title, xLabel, yLabel, series, height = 280 }) {
+  function line(container, { title, xLabel, yLabel, series, height = 280, markMax = false }) {
     container.innerHTML = "";
     container.classList.add("chart");
 
@@ -154,6 +155,20 @@
       }
       if (d) el("path", { d, class: "series-line", style: `stroke: var(--series-${s.slot})`,
                           "stroke-dasharray": DASHES[s.dash || 0] }, lines);
+    }
+
+    // A point at each series' highest value (the first, if it is reached twice)
+    if (markMax) {
+      const marks = el("g", {}, svg);
+      for (const s of series) {
+        let best = -1;
+        for (let i = 0; i < s.x.length; i++)
+          if (Number.isFinite(s.y[i]) && (best < 0 || s.y[i] > s.y[best])) best = i;
+        if (best < 0) continue;
+        const dot = el("circle", { cx: sx(s.x[best]).toFixed(1), cy: sy(s.y[best]).toFixed(1), r: 4.5,
+                                   class: "chart-max", style: `fill: var(--series-${s.slot})` }, marks);
+        el("title", {}, dot).textContent = `${s.label}: highest ${fmtValue(s.y[best])} at ${fmtValue(s.x[best])}`;
+      }
     }
 
     // Crosshair and tooltip
