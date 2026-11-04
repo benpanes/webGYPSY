@@ -3,13 +3,15 @@
 //
 //   GypsyChart.line(container, {
 //     title, xLabel, yLabel,
-//     series: [{ label, slot (1-8), dash (0-5), x: [...], y: [...] }],
+//     series: [{ label, slot (1-8), dash (0-5), shade (0-5), x: [...], y: [...] }],
 //     height,   // SVG height in px (default 280); width fills the container
 //     markMax,  // true: a point at each series' highest value (e.g. peak MAI)
 //   })
 //
 // Colours come from CSS custom properties --series-1 .. --series-8 and the
 // --chart-* chrome tokens, so light and dark mode are set in the stylesheet.
+// shade (default 0) mixes the slot's colour toward the surface or the ink,
+// for lines of one colour family (e.g. one species in several scenarios).
 // x must be ascending within a series; NaN values break the line.
 // GypsyChart.toSVGText(svg) serialises a chart with its colours resolved and
 // its title and legend drawn above the plot, for download.
@@ -21,6 +23,12 @@
   const NS = "http://www.w3.org/2000/svg";
   const DASHES = ["", "7 4", "2 3", "10 3 2 3", "14 4", "4 4"];
   const M = { top: 12, right: 16, bottom: 40, left: 56 };
+  // Shades 1-5: lighter and darker steps, alternating, the nearest first
+  const SHADES = [null, ["surface", 70], ["ink", 62], ["surface", 50], ["ink", 42], ["surface", 85]];
+  function colour(s) {
+    const base = `var(--series-${s.slot})`, sh = SHADES[s.shade || 0];
+    return sh ? `color-mix(in oklab, ${base} ${sh[1]}%, var(--chart-${sh[0]}))` : base;
+  }
 
   function el(tag, attrs = {}, parent) {
     const e = document.createElementNS(NS, tag);
@@ -91,7 +99,7 @@
         const item = document.createElement("span");
         item.className = "chart-legend-item";
         const sw = el("svg", { width: 22, height: 10, "aria-hidden": "true" });
-        el("line", { x1: 1, y1: 5, x2: 21, y2: 5, class: "series-line", style: `stroke: var(--series-${s.slot})`,
+        el("line", { x1: 1, y1: 5, x2: 21, y2: 5, class: "series-line", style: `stroke: ${colour(s)}`,
                      "stroke-dasharray": DASHES[s.dash || 0] }, sw);
         item.appendChild(sw);
         item.appendChild(document.createTextNode(s.label));
@@ -153,7 +161,7 @@
         d += (pen ? "L" : "M") + sx(s.x[i]).toFixed(1) + " " + sy(s.y[i]).toFixed(1);
         pen = true;
       }
-      if (d) el("path", { d, class: "series-line", style: `stroke: var(--series-${s.slot})`,
+      if (d) el("path", { d, class: "series-line", style: `stroke: ${colour(s)}`,
                           "stroke-dasharray": DASHES[s.dash || 0] }, lines);
     }
 
@@ -166,14 +174,14 @@
           if (Number.isFinite(s.y[i]) && (best < 0 || s.y[i] > s.y[best])) best = i;
         if (best < 0) continue;
         const dot = el("circle", { cx: sx(s.x[best]).toFixed(1), cy: sy(s.y[best]).toFixed(1), r: 4.5,
-                                   class: "chart-max", style: `fill: var(--series-${s.slot})` }, marks);
+                                   class: "chart-max", style: `fill: ${colour(s)}` }, marks);
         el("title", {}, dot).textContent = `${s.label}: highest ${fmtValue(s.y[best])} at ${fmtValue(s.x[best])}`;
       }
     }
 
     // Crosshair and tooltip
     const cross = el("line", { y1: M.top, y2: M.top + ph, class: "chart-cross", visibility: "hidden" }, svg);
-    const dots = series.map(s => el("circle", { r: 4, class: "chart-dot", style: `fill: var(--series-${s.slot})`, visibility: "hidden" }, svg));
+    const dots = series.map(s => el("circle", { r: 4, class: "chart-dot", style: `fill: ${colour(s)}`, visibility: "hidden" }, svg));
     const tip = document.createElement("div");
     tip.className = "chart-tip";
     tip.hidden = true;
@@ -212,7 +220,7 @@
         line.className = "chart-tip-row";
         const sw = document.createElement("span");
         sw.className = "chart-tip-swatch";
-        sw.style.background = `var(--series-${r.s.slot})`;
+        sw.style.background = colour(r.s);
         const name = document.createElement("span");
         name.textContent = r.s.label;
         const val = document.createElement("span");
@@ -236,7 +244,9 @@
   function addHeading(svg, copy) {
     const { title, series } = svg.chartInfo;
     const W = Number(svg.getAttribute("width")), H = Number(svg.getAttribute("height"));
-    const tokens = getComputedStyle(svg.ownerDocument.documentElement);
+    // A series colour as the browser computes it, so the file needs no variables
+    const probe = el("line", {}, svg);
+    const resolve = css => { probe.style.stroke = css; return toRGB(getComputedStyle(probe).stroke); };
     const ink = getComputedStyle(svg.querySelector("text")).fill;
     const font = getComputedStyle(svg).fontFamily;
     const text = (parent, x, y, str, size, weight) => {
@@ -251,12 +261,13 @@
       for (const s of series) {
         const w = 28 + s.label.length * 6.2;
         if (x > 8 && x + w > W - 8) { x = 8; y += 18; }
-        el("line", { x1: x, y1: y - 4, x2: x + 22, y2: y - 4, stroke: tokens.getPropertyValue(`--series-${s.slot}`).trim(),
+        el("line", { x1: x, y1: y - 4, x2: x + 22, y2: y - 4, stroke: resolve(colour(s)),
                      "stroke-width": 2, "stroke-dasharray": DASHES[s.dash || 0] }, head);
         text(head, x + 27, y, s.label, 11, 400);
         x += w + 12;
       }
     }
+    probe.remove();
     const top = series.length > 1 ? y + 12 : 28;
 
     const plot = el("g", { transform: `translate(0 ${top})` });
@@ -266,13 +277,26 @@
     copy.setAttribute("viewBox", `0 0 ${W} ${H + top}`);
   }
 
+  // A computed colour (which may be oklab() for mixed shades) as rgb(), which
+  // every SVG reader understands; other values are returned as they are
+  let pixel;
+  function toRGB(value) {
+    if (!/^(oklab|oklch|color|lab|lch)\(/.test(value)) return value;
+    pixel ||= Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d", { willReadFrequently: true });
+    pixel.clearRect(0, 0, 1, 1);
+    pixel.fillStyle = value;
+    pixel.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = pixel.getImageData(0, 0, 1, 1).data;
+    return a === 255 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+  }
+
   function toSVGText(svg) {
     const copy = svg.cloneNode(true);
     const src = svg.querySelectorAll("*"), dst = copy.querySelectorAll("*");
     src.forEach((node, i) => {
       const cs = getComputedStyle(node);
       for (const p of ["stroke", "fill", "stroke-width", "font-size", "font-family", "font-weight", "visibility"])
-        dst[i].style.setProperty(p, cs.getPropertyValue(p));
+        dst[i].style.setProperty(p, toRGB(cs.getPropertyValue(p)));
     });
     addHeading(svg, copy);
     copy.setAttribute("xmlns", NS);

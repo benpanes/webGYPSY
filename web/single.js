@@ -202,9 +202,11 @@
     for (const x of [{ label: "Species" }, ...TI_FIELDS]) {
       if (x.key === "selAge") tih.appendChild(Object.assign(document.createElement("th"), { className: "ti-gap" }));
       const th = document.createElement("th");
-      th.textContent = x.label;
+      // Scenario columns have no heading, only their remove button
+      if (!x.gw) th.textContent = x.label;
       if (x.gw) {
         th.dataset.gw = x.gw;
+        th.className = "gw-head";
         const del = GypsyUI.button("×", () => removeScenario(x.gw), "link");
         del.type = "button";
         del.className = "link gw-del";
@@ -465,7 +467,11 @@
     const out = [];   // { id (input), level, text }
     const add = (id, level, text) => out.push({ id, level, text });
     const ps = $("sPsflag").checked;
-    const sppLabel = s => `${s} (${SPP_NAMES[s]})`;
+    const sppLabel = s => s;   // messages name species by code only
+    const ba = $("sBaflag").checked;
+    // Species missing stocking while it is used, or with stocking or basal
+    // area that isn't used: one warning each
+    const noPs = [], unusedPs = [], unusedBa = [];
 
     const standAge = val("sStandAge");
     if (standAge === "bad") add("sStandAge", "err", "Stand age must be a number.");
@@ -517,8 +523,19 @@
         else if (given("n") && v.n < 1000 && v.ps > v.n / 10)
           add(id("ps"), "err", `${sppLabel(s)}: percent stocking can be at most density / 10 below 1,000 stems/ha.`);
         else if (v.ps > 0 && v.ps <= 1) add(id("ps"), "warn", `${sppLabel(s)}: percent stocking of 1 or less may have been entered as a proportion.`);
-      } else if (ps) add(id("ps"), "err", `${sppLabel(s)}: percent stocking is needed while "Use percent stocking" is ticked.`);
+      } else if (ps) noPs.push(s);
+      if (given("ps") && !ps) unusedPs.push(s);
+      if (given("ba") && !ba) unusedBa.push(s);
     }
+    if (noPs.length)
+      out.push({ ids: noPs.map(s => `s_ps_${s}`), level: "warn",
+                 text: `"Use percent stocking" is enabled, but no percent stocking is given for ${noPs.join(", ")}.` });
+    if (unusedPs.length)
+      out.push({ ids: unusedPs.map(s => `s_ps_${s}`), level: "warn",
+                 text: `Percent stocking is given for ${unusedPs.join(", ")}, but "Use percent stocking" is not enabled.` });
+    if (unusedBa.length)
+      out.push({ ids: unusedBa.map(s => `s_ba_${s}`), level: "warn",
+                 text: `Basal area is given for ${unusedBa.join(", ")}, but "Adjust to observed basal area" is not enabled.` });
     if (!present) add(firstCell("AW").id, "err", "Fill in at least one species.");
 
     if (!$("sTiCard").hidden) {
@@ -537,7 +554,7 @@
         if (sel === "bad") add(id("selAge"), "err", `${sppLabel(s)}: selection age is not a number.`);
         const any = gws.some(g => Number.isFinite(g) && g !== 0);
         if (!inStand) {
-          if (gws.some(Number.isFinite)) add(id("gw1"), "warn", `${sppLabel(s)}: genetic worth is given but ${s} is not in the stand.`);
+          if (gws.some(Number.isFinite)) add(id("gw1"), "warn", `${sppLabel(s)}: genetic worth is given but the species is not in the stand.`);
           continue;
         }
         if (!gws.some(g => Number.isFinite(g) || g === "bad")) {
@@ -574,32 +591,60 @@
   // Checks that need the model's ages (years to breast height)
   function checkAfter(D) {
     const out = [];
+    const noBa = [];   // species past breast height age without basal area: one warning
     for (const s of D.present) {
       const bh = D.init[`${lc(s)}_bhage`];
       const ba = D.form.spp[s].ba;
       if (!D.baflag) continue;
       if (ba != null && !(bh > 0))
-        out.push({ id: `s_ba_${s}`, level: "err", text: `${s} (${SPP_NAMES[s]}): basal area can't be given before breast height age (years to breast height ${fmt(D.init[`${lc(s)}_y2bh`], 1)}).` });
-      else if (ba == null && bh > 0)
-        out.push({ id: `s_ba_${s}`, level: "warn", text: `${s} (${SPP_NAMES[s]}): basal area should be given while "Adjust to observed basal area" is ticked (the species is past breast height age).` });
+        out.push({ id: `s_ba_${s}`, level: "err", text: `${s}: basal area can't be given before breast height age (years to breast height ${fmt(D.init[`${lc(s)}_y2bh`], 1)}).` });
+      else if (ba == null && bh > 0) noBa.push(s);
+    }
+    if (noBa.length)
+      out.push({ ids: noBa.map(s => `s_ba_${s}`), level: "warn",
+                 text: `"Adjust to observed basal area" is enabled, but no basal area is given for ${noBa.join(", ")}.` });
+    return out;
+  }
+
+  // Checks that differ only in their species ("AW: ...") become one, e.g.
+  // "AW, SW: top height is needed."
+  function mergeChecks(list) {
+    const out = [], seen = new Map();
+    for (const c of list) {
+      const m = /^([A-Z]{2}): (.*)$/s.exec(c.text);
+      if (!m) { out.push(c); continue; }
+      const key = c.level + "|" + m[2], first = seen.get(key);
+      if (!first) {
+        const d = { ...c, ids: c.ids || [c.id], spp: [m[1]], rest: m[2] };
+        seen.set(key, d);
+        out.push(d);
+      } else {
+        first.ids.push(...(c.ids || [c.id]));
+        first.spp.push(m[1]);
+        first.text = `${first.spp.join(", ")}: ${first.rest}`;
+      }
     }
     return out;
   }
 
   function showChecks(list) {
+    list = mergeChecks(list);
     for (const el of document.querySelectorAll("#s-input td.err, #s-input td.warn, #s-input .field.err, #s-input .field.warn"))
       el.classList.remove("err", "warn");
     for (const el of document.querySelectorAll("#s-input input[title]")) el.removeAttribute("title");
     $("sChecks").innerHTML = $("sTiChecks").innerHTML = "";
+    // A check marks the box c.id, or each of c.ids (one message for several)
     for (const c of list) {
-      const el = $(c.id);
-      const holder = el.closest("td") || el.closest(".field");
-      if (holder && !(holder.classList.contains("err"))) {
-        holder.classList.remove("warn");
-        holder.classList.add(c.level);
+      const els = (c.ids || [c.id]).map($), el = els[0];
+      for (const e of els) {
+        const holder = e.closest("td") || e.closest(".field");
+        if (holder && !(holder.classList.contains("err"))) {
+          holder.classList.remove("warn");
+          holder.classList.add(c.level);
+        }
+        // Input boxes only: their titles are cleared on each check above
+        if (e.tagName === "INPUT") e.title = (e.title ? e.title + "\n" : "") + c.text;
       }
-      // Input boxes only: their titles are cleared on each check above
-      if (el.tagName === "INPUT") el.title = (el.title ? el.title + "\n" : "") + c.text;
       const b = document.createElement("button");
       b.type = "button";
       b.className = "check-item " + c.level;
@@ -661,6 +706,7 @@
   }
 
   function runStand() {
+    clearTimeout(timer);   // a check still waiting would hide this run's own checks
     $("sMessages").innerHTML = "";
     const list = check();
     showChecks(list);
@@ -967,17 +1013,16 @@
   }
 
   // Charts, as in the Excel tool's report
-  // Stand totals for the groups given, every projection overlapped. One
-  // projection: coloured by group. Several (tree improvement): coloured by
-  // projection, dashed by group.
+  // Stand totals for the groups given, every projection overlapped: coloured
+  // by group, dashed when merchantable, tree improvement scenarios as shades.
   function groupChart(D, prefix, label, unit, groups, set = [D]) {
     const many = set.length > 1;
     const series = [];
     for (const E of set) {
       const i = D.set.indexOf(E);
       for (const [g, name, slot] of GROUPS.filter(([g]) => groups.includes(g)))
-        series.push({ label: many ? `${name} – ${gwLabel(E)}` : name, slot: many ? i + 1 : slot,
-                      dash: many ? ["con", "dec", "all"].indexOf(g) : 0, x: E.col.standage, y: E.col[prefix + g] });
+        series.push({ label: many ? `${name} – ${gwLabel(E)}` : name, slot, shade: i,
+                      dash: prefix.startsWith("t") ? 0 : 1, x: E.col.standage, y: E.col[prefix + g] });
     }
     return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`, series, xLabel: X_LABEL,
              markMax: prefix.includes("mai") };
@@ -988,11 +1033,12 @@
   const standGroups = D => (D.groups.con && D.groups.dec ? ["all", "con", "dec"] : ["all"]);
 
   // Charts, as in the Excel tool's report, for the projections in set
-  // (overlapped when there are several). Stand totals: coloured by projection
-  // when there are several, else by group; dashed by group and kind. Species:
-  // coloured by species, total in the next four colours; species improved in
-  // some scenario get a line per projection, dashed by projection.
-  // filtered applies the Charts tab's tick boxes.
+  // (overlapped when there are several). Each group or species keeps one
+  // colour: total solid, merchantable dashed, and tree improvement scenarios
+  // as shades of it (species: a line per projection only for species improved
+  // in some scenario). filtered applies the Charts tab's tick boxes.
+  const dashOf = k => (k.id === "m" ? 1 : 0);
+
   function chartSpecs(set, filtered = false) {
     const D = set[0], many = set.length > 1;
     const specs = [];
@@ -1006,17 +1052,17 @@
       if (c.group) {
         const groups = GROUPS.filter(([g]) => standGroups(D).includes(g));
         for (const E of set) for (const [g, name, slot] of groups) for (const k of kinds) {
-          const stand = tag(g === "all" ? "Stand" : name, k), kind = KINDS.indexOf(k);
-          series.push({ label: many ? `${stand} – ${gwLabel(E)}` : stand, slot: many ? D.set.indexOf(E) + 1 : slot,
-                        dash: many ? ["con", "dec", "all"].indexOf(g) + 3 * kind : kind, x: E.col.standage, y: E.col[prefix(k) + g] });
+          const stand = tag(g === "all" ? "Stand" : name, k);
+          series.push({ label: many ? `${stand} – ${gwLabel(E)}` : stand, slot, dash: dashOf(k), shade: D.set.indexOf(E),
+                        x: E.col.standage, y: E.col[prefix(k) + g] });
         }
       } else {
         for (const s of D.present) for (const k of kinds) {
           const improved = many && set.some(E => E.improved.includes(s));
           for (const E of improved ? set : [D]) {
             const name = !improved ? s : E.scenario.k ? gwLabel(E, s) : `${s} – ${sc(E)}`;
-            series.push({ label: tag(name, k), slot: SPECIES.indexOf(s) + 1 + (k.id === "t" ? 4 : 0),
-                          dash: improved ? D.set.indexOf(E) : 0, x: E.col.standage, y: E.col[prefix(k) + lc(s)] });
+            series.push({ label: tag(name, k), slot: SPECIES.indexOf(s) + 1, dash: dashOf(k),
+                          shade: improved ? D.set.indexOf(E) : 0, x: E.col.standage, y: E.col[prefix(k) + lc(s)] });
           }
         }
       }
@@ -1363,14 +1409,17 @@
   // enough to be seen (runs take milliseconds)
   const SPIN_MIN_MS = 400;
   let spinStart = 0, spinTimer;
+  // Each clears an error flash: left on, it would replay whenever the single
+  // stand view is shown again (e.g. after switching modes)
   function spinOn() {
     clearTimeout(spinTimer);
     spinStart = spinStart || performance.now();
+    $("sSpinner").classList.remove("error");
     $("sSpinner").classList.add("on");
   }
   function spinOff() {
     spinTimer = setTimeout(() => {
-      $("sSpinner").classList.remove("on");
+      $("sSpinner").classList.remove("on", "error");
       spinStart = 0;
     }, Math.max(0, SPIN_MIN_MS - (performance.now() - spinStart)));
   }
