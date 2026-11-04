@@ -24,14 +24,16 @@
     <div class="tab-bar">
       <nav class="tabs" role="tablist" aria-label="Single stand">
         <button type="button" role="tab" aria-controls="s-input">Stand</button>
-        <button type="button" role="tab" aria-controls="s-yield" disabled>Yield table</button>
         <button type="button" role="tab" aria-controls="s-charts" disabled>Charts</button>
+        <button type="button" role="tab" aria-controls="s-yield" disabled>Yield table</button>
       </nav>
       <div class="tab-actions">
         <div class="spinner" id="sSpinner" aria-hidden="true"></div>
         <span class="small" id="sStatus">Loading model…</span>
         <button id="sRun" disabled>Start</button>
         <button id="sReset">Reset</button>
+        <button class="secondary" id="sUndo" disabled title="Undo (Ctrl+Z)">Undo</button>
+        <button class="secondary" id="sRedo" disabled title="Redo (Ctrl+Y)">Redo</button>
         <details class="menu" id="sExportMenu">
           <summary class="secondary-btn">Export</summary>
           <div class="menu-body">
@@ -55,12 +57,7 @@
             <label class="field">Stand age (years) <input type="number" id="sStandAge" min="1" step="1" placeholder="Leading age"></label>
             <label class="field">Project to stand age <input type="number" id="sProjectTo" value="250" min="20" max="400" step="10"></label>
           </div>
-          <div class="checks">
-            <label class="check"><input type="checkbox" id="sPsflag" checked> Use percent stocking (spatial)</label>
-            <label class="check"><input type="checkbox" id="sBaflag" checked> Adjust to observed basal area</label>
-          </div>
           <p class="small hint">Stand age defaults to the oldest species' total age.</p>
-          <button id="sTiShow" aria-controls="sTiCard" aria-expanded="false">Tree improvement</button>
         </section>
 
         <section class="card">
@@ -88,7 +85,12 @@
         <div id="sChecks" class="checks-list"></div>
         <!-- Clear all moves under the species rows' Clear buttons -->
         <button class="link" id="sClear">Clear all</button>
+        <div class="checks" style="margin-top:12px">
+          <label class="check"><input type="checkbox" id="sPsflag" checked> Use percent stocking (spatial)</label>
+          <label class="check"><input type="checkbox" id="sBaflag" checked> Adjust to observed basal area</label>
+        </div>
         <div class="row" style="margin-top:12px">
+          <button id="sTiShow" aria-controls="sTiCard" aria-expanded="false">Tree improvement</button>
           <details class="menu menu-left" id="sExampleMenu">
             <summary class="secondary-btn">Load example</summary>
             <div class="menu-body" id="sExampleList"></div>
@@ -148,6 +150,21 @@
       </div>
     </div>
 
+    <!-- Charts -->
+    <div class="tabpanel" role="tabpanel" id="s-charts" hidden>
+      <section class="card">
+        <div class="row chart-pick">
+          <details class="menu menu-left" id="sChartMenu">
+            <summary class="secondary-btn">Charts shown</summary>
+            <div class="menu-body" id="sChartList"></div>
+          </details>
+          <label class="scenario-pick" hidden>Scenarios <select data-pick="chart"></select></label>
+        </div>
+        <div id="sChartMessages"></div>
+        <div class="charts" id="sCharts"></div>
+      </section>
+    </div>
+
     <!-- Yield table -->
     <div class="tabpanel" role="tabpanel" id="s-yield" hidden>
       <section class="card">
@@ -166,21 +183,6 @@
         <p class="small hint" id="sYieldNote"></p>
       </section>
     </div>
-
-    <!-- Charts -->
-    <div class="tabpanel" role="tabpanel" id="s-charts" hidden>
-      <section class="card">
-        <div class="row chart-pick">
-          <details class="menu menu-left" id="sChartMenu">
-            <summary class="secondary-btn">Charts shown</summary>
-            <div class="menu-body" id="sChartList"></div>
-          </details>
-          <label class="scenario-pick" hidden>Scenarios <select data-pick="chart"></select></label>
-        </div>
-        <div id="sChartMessages"></div>
-        <div class="charts" id="sCharts"></div>
-      </section>
-    </div>
   </div>
 
   <!-- ==== Multiple stands ============================================================= -->
@@ -188,10 +190,14 @@
     <div class="tab-bar">
       <nav class="tabs" role="tablist" aria-label="Multiple stands">
         <button type="button" role="tab" aria-controls="m-input">Input data</button>
-        <button type="button" role="tab" aria-controls="m-run">Run</button>
         <button type="button" role="tab" aria-controls="m-charts" disabled>Charts</button>
-        <button type="button" role="tab" aria-controls="m-table" disabled>Results table</button>
+        <button type="button" role="tab" aria-controls="m-table" disabled>Yield table</button>
       </nav>
+      <div class="tab-actions">
+        <button id="mReset">Reset</button>
+        <button class="secondary" id="undoGrid" disabled title="Undo a table edit (Ctrl+Z)">Undo</button>
+        <button class="secondary" id="redoGrid" disabled title="Redo (Ctrl+Y)">Redo</button>
+      </div>
     </div>
 
     <!-- Input -->
@@ -201,51 +207,57 @@
           <h2>Input data</h2>
           <span class="small">One row per stand and species</span>
         </div>
-
-        <div class="drop" id="drop">
-          <button id="chooseFile">Choose a file</button>
-          <div class="small" style="margin-top:8px">or drop a CSV, text or spreadsheet file (.xlsx, .xls, .ods) here</div>
-          <input type="file" id="file" accept=".csv,.tsv,.txt,.dat,.xlsx,.xlsm,.xlsb,.xls,.ods,text/csv,text/plain" hidden>
+        <!-- How the file is read: column names (once a table is loaded, with
+             the separator to its right), the sheet of a spreadsheet, or the
+             separator of a text file -->
+        <div id="sourceBar" class="row source-bar">
+          <label class="check hidden header-check" id="headerField"><input type="checkbox" id="hasHeader" checked> First row is column names</label>
+          <label class="field hidden" id="sheetField">Sheet <select id="sheet"></select></label>
+          <label class="field" id="delimField">Separator
+            <select id="delimiter">
+              <option value="auto">Detect</option>
+              <option value=",">Comma</option>
+              <option value="&#9;">Tab</option>
+              <option value=";">Semicolon</option>
+              <option value="|">Pipe</option>
+              <option value=" ">Spaces</option>
+            </select>
+          </label>
         </div>
 
-        <details class="more" id="moreInput">
-          <summary>More options</summary>
-          <div class="more-body">
-            <div class="row">
-              <button class="secondary" id="pasteToggle">Paste text</button>
-              <button class="secondary" id="loadExample">Load example</button>
-              <button class="secondary" id="newTable">New empty table</button>
+        <!-- Before a table is loaded; the table then takes its place, and a file
+             dropped anywhere on this card replaces it -->
+        <div class="drop" id="drop" role="button" tabindex="0">
+          <strong>Drop a CSV, text or spreadsheet file (.xlsx, .xls, .ods) here</strong>
+          <div class="small" style="margin-top:6px">or click to choose a file</div>
+        </div>
+        <input type="file" id="file" accept=".csv,.tsv,.txt,.dat,.xlsx,.xlsm,.xlsb,.xls,.ods,text/csv,text/plain" hidden>
+        <!-- Below the drop box; beside Hide table once a table is loaded -->
+        <div class="row" id="moreHome" style="margin-top:12px">
+          <details class="menu menu-left" id="moreInput">
+            <summary class="secondary-btn">More options</summary>
+            <div class="menu-body more-menu">
+              <button class="link" type="button" id="pasteToggle">Paste text</button>
+              <button class="link" type="button" id="loadExample">Load example</button>
+              <button class="link" type="button" id="newTable">New empty table</button>
+              <div id="pasteBox" class="hidden">
+                <textarea id="pasteText" spellcheck="false" placeholder="Paste rows copied from a spreadsheet or text file"></textarea>
+                <div class="row" style="margin-top:8px"><button id="pasteUse">Use pasted text</button></div>
+              </div>
             </div>
-            <div id="pasteBox" class="hidden" style="margin-top:12px">
-              <textarea id="pasteText" spellcheck="false" placeholder="Paste rows copied from a spreadsheet or text file"></textarea>
-              <div class="row" style="margin-top:8px"><button id="pasteUse">Use pasted text</button></div>
-            </div>
-            <div id="sourceBar" class="row source-bar">
-              <label class="check"><input type="checkbox" id="hasHeader" checked> First row is column names</label>
-              <label class="field hidden" id="sheetField">Sheet <select id="sheet"></select></label>
-              <label class="field hidden" id="delimField">Separator
-                <select id="delimiter">
-                  <option value="auto">Detect</option>
-                  <option value=",">Comma</option>
-                  <option value="&#9;">Tab</option>
-                  <option value=";">Semicolon</option>
-                  <option value="|">Pipe</option>
-                  <option value=" ">Spaces</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        </details>
-
+          </details>
+        </div>
         <div id="gridArea" class="hidden">
-          <p class="small" style="margin:12px 0 8px"><strong id="sourceName"></strong> · Choose what each column holds from the menus above the columns. Cells can be edited directly; pasting a block copied from a spreadsheet fills the cells below and to the right.</p>
-          <div class="grid-wrap"><table class="grid" id="grid"></table></div>
+          <p class="small grid-body" style="margin:0 0 8px"><strong id="sourceName"></strong> · Choose what each column holds from the menus above the columns. Cells can be edited directly; pasting a block copied from a spreadsheet fills the cells below and to the right.</p>
+          <div class="grid-wrap grid-body" id="gridWrap"><table class="grid" id="grid"></table></div>
           <div class="grid-foot">
-            <div class="row" style="align-items:center">
-              <button class="secondary" id="addRow">Add row</button>
+            <div class="row" id="gridTools" style="align-items:center">
+              <button class="secondary" id="chooseFile">Choose a file</button>
+              <button class="secondary" id="toggleGrid" aria-controls="gridWrap" aria-expanded="true">Hide table</button>
+              <button class="secondary" id="lockGrid">Edit table</button>
               <span class="small" id="gridStatus"></span>
             </div>
-            <div class="pager">
+            <div class="pager grid-body">
               <button class="secondary" id="prevPage" aria-label="Previous page">‹</button>
               <span class="small" id="pageInfo"></span>
               <button class="secondary" id="nextPage" aria-label="Next page">›</button>
@@ -253,12 +265,12 @@
             </div>
           </div>
         </div>
+
+
         <div id="inputMessages"></div>
       </section>
-    </div>
 
-    <!-- Options and run -->
-    <div class="tabpanel" role="tabpanel" id="m-run" hidden>
+      <!-- Options and run -->
       <section>
         <div class="section-head"><h2>Run a simulation</h2></div>
         <div class="row">
@@ -268,35 +280,43 @@
         <div class="row" style="margin-top:12px">
           <label class="check"><input type="checkbox" id="psflag" checked> Use percent stocking</label>
           <label class="check"><input type="checkbox" id="baflag" checked> Use basal area</label>
-          <label class="check"><input type="checkbox" id="tiflag"> Tree improvement (genetic worth and selection age columns)</label>
+          <label class="check"><input type="checkbox" id="tiflag"> Project tree improvement</label>
         </div>
 
         <!-- Unticked, this uses the defaults shown beside it -->
         <div class="option-group">
-          <label class="check"><input type="checkbox" id="customMerch" aria-controls="merchOptions"> Customize merchantability criteria</label>
+          <label class="check"><input type="checkbox" id="customMerch" aria-controls="merchOptions"> Custom merchantability</label>
           <span class="small" id="merchDefault">Using a 0.3 m stump, 15 cm stump diameter outside bark and 10 cm top diameter inside bark</span>
           <div class="sub-options hidden" id="merchOptions">
+            <!-- Above the criteria, either kind: the switch single stand mode uses for its limits (the hidden box keeps the setting) -->
+            <div class="row" style="margin-bottom:10px; align-items:center">
+              <div class="mode-switch small-switch" id="merchMode" role="radiogroup" aria-label="Merchantability criteria apply" aria-controls="merchTable">
+                <button type="button" role="radio" data-util="all" aria-checked="true">Universal</button>
+                <button type="button" role="radio" data-util="spp" aria-checked="false">Species-specific</button>
+              </div>
+              <input type="checkbox" id="merchBySpp" hidden>
+            </div>
             <div class="row" id="merchAll">
               <label class="field">Stump height (m) <input type="number" id="stumpHt" value="0.3" step="0.05" max="0.3"></label>
               <label class="field">Stump DOB (cm) <input type="number" id="stumpDob" value="15" step="0.5"></label>
               <label class="field">Top DIB (cm) <input type="number" id="topDib" value="10" step="0.5"></label>
             </div>
-            <label class="check" style="margin-top:10px"><input type="checkbox" id="merchBySpp" aria-controls="merchTable"> Different criteria for each species</label>
             <table class="merch-table hidden" id="merchTable">
               <thead><tr><th>Species</th><th>Stump height (m)</th><th>Stump DOB (cm)</th><th>Top DIB (cm)</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
-        <div class="row" style="margin-top:16px; align-items:center">
-          <button id="run" disabled>Run</button>
+        <!-- Status on the left, Run on the right -->
+        <div class="row" style="margin-top:16px; align-items:center; justify-content:space-between">
           <span class="small" id="status">Loading model…</span>
+          <button id="run" disabled>Run</button>
         </div>
         <div id="runMessages"></div>
       </section>
 
       <section id="runsSection" class="hidden">
-        <div class="section-head"><h2>Simulations</h2><span class="small">Each run keeps its own options and results. See them in the Charts and Results table tabs.</span></div>
+        <div class="section-head"><h2>Simulations</h2><span class="small">Each run keeps its own options and results. See them in the Charts and Yield table tabs.</span></div>
         <div class="runs" id="runs"></div>
       </section>
     </div>
@@ -337,26 +357,29 @@
       </section>
     </div>
 
-    <!-- Results table -->
+    <!-- Yield table -->
     <div class="tabpanel" role="tabpanel" id="m-table" hidden>
       <section id="tableSection">
         <div class="section-head">
-          <h2>Results table</h2>
+          <h2>Yield table</h2>
           <button class="secondary" id="tableExport">Export table (CSV)</button>
         </div>
         <div class="row">
+          <label class="field">Table
+            <select id="tableKind"><option value="yield">Merchantable yield</option><option value="detail">By species</option><option value="custom">Custom columns</option></select>
+          </label>
           <label class="field">Simulation <select id="tableRun"></select></label>
           <label class="field">Stand <select id="tableStand"></select></label>
-          <label class="field">From year <input type="number" id="yearFrom" min="1" placeholder="First" style="width:80px"></label>
-          <label class="field">To year <input type="number" id="yearTo" min="1" placeholder="Last" style="width:80px"></label>
+          <label class="field"><span id="fromLabel">From year</span> <input type="number" id="yearFrom" min="1" placeholder="First" style="width:80px"></label>
+          <label class="field"><span id="toLabel">To year</span> <input type="number" id="yearTo" min="1" placeholder="Last" style="width:80px"></label>
           <label class="field">Show every <select id="step"><option value="1">year</option><option value="5">5 years</option><option value="10" selected>10 years</option><option value="25">25 years</option></select></label>
           <label class="field">Decimals <select id="decimals"><option value="auto">Auto</option><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
         </div>
-        <details class="more" id="tableColsBox">
-          <summary>Edit columns</summary>
-          <div class="more-body table-cols" id="tableCols"></div>
-        </details>
-        <div class="table-wrap" style="margin-top:12px"><table class="results" id="results"></table></div>
+        <!-- Custom columns only: choose the table's columns -->
+        <div class="hidden" id="tableColsBox" style="margin-top:14px">
+          <div class="table-cols" id="tableCols"></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table class="results grouped" id="results"></table></div>
         <div class="small" id="tableNote" style="margin-top:6px"></div>
       </section>
     </div>

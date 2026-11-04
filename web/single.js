@@ -192,10 +192,8 @@
     const tig = ti.createTHead().insertRow();
     for (const text of ["", "Genetic worth (%)", null, ""]) {
       const th = document.createElement("th");
-      if (text === null) {   // above the gap before selection age
-        th.className = "ti-gap";
-        th.appendChild($("sTiAdd"));
-      } else th.textContent = text;
+      if (text === null) th.className = "ti-gap";   // above the gap before selection age
+      else th.textContent = text;
       tig.appendChild(th);
     }
     const tih = ti.tHead.insertRow();
@@ -225,7 +223,12 @@
       th.title = SPP_NAMES[s];
       tr.appendChild(th);
       for (const x of TI_FIELDS) {
-        if (x.key === "selAge") tr.insertCell().className = "ti-gap";
+        if (x.key === "selAge") {
+          // The gap before selection age; on the first species' row it holds Add
+          const gap = tr.insertCell();
+          gap.className = "ti-gap";
+          if (s === TI_SPP[0]) gap.appendChild($("sTiAdd"));
+        }
         const inp = document.createElement("input");
         Object.assign(inp, { type: "number", step: x.step, min: "0", id: `s_${x.key}_${s}` });
         inp.setAttribute("aria-label", `${SPP_NAMES[s]}, ${x.aria}`);
@@ -423,7 +426,10 @@
     for (const el of document.querySelectorAll("#sTiTable [data-gw]")) el.hidden = Number(el.dataset.gw) > S.tiCount;
     $("sTiTable").tHead.rows[0].cells[1].colSpan = S.tiCount;
     for (const b of document.querySelectorAll("#sTiTable .gw-del")) b.hidden = S.tiCount < 2;
-    $("sTiAdd").disabled = S.tiCount >= SCENARIOS.length;
+    // Hidden at the most scenarios; it keeps its space, so the columns don't shift
+    const full = S.tiCount >= SCENARIOS.length;
+    $("sTiAdd").disabled = full;
+    $("sTiAdd").style.visibility = full ? "hidden" : "";
   }
 
   // Remove a scenario: later ones move left to keep GW 1, 2, ... in order
@@ -1435,8 +1441,52 @@
   }
   const spinDone = ok => (ok ? spinOff() : spinError());
 
+  // ---- Undo and redo ---------------------------------------------------------------
+  // Each change to the inputs remembers the form as it was (typing in one box
+  // is one step); undoing puts it back, and the results follow as for any
+  // change. Loading an example and Reset can be undone too.
+  const hist = { undo: [], redo: [], last: null, field: null };
+  const HIST_MAX = 100;
+  function trackForm() {
+    const now = JSON.stringify(formState());
+    if (hist.last !== null && now !== hist.last) {
+      const el = document.activeElement;
+      const typing = el && el.tagName === "INPUT" && (el.type === "number" || el.type === "text") ? el.id : null;
+      if (!typing || typing !== hist.field) {
+        hist.undo.push(hist.last);
+        if (hist.undo.length > HIST_MAX) hist.undo.shift();
+      }
+      hist.redo = [];
+      hist.field = typing;
+    }
+    hist.last = now;
+    updateUndo();
+  }
+  function step(from, to) {
+    if (!from.length) return;
+    to.push(hist.last);
+    hist.last = from.pop();
+    hist.field = null;
+    setForm(JSON.parse(hist.last));
+    selAgeEnabled();
+    changed();
+  }
+  function updateUndo() {
+    $("sUndo").disabled = !hist.undo.length;
+    $("sRedo").disabled = !hist.redo.length;
+  }
+  $("sUndo").addEventListener("click", () => step(hist.undo, hist.redo));
+  $("sRedo").addEventListener("click", () => step(hist.redo, hist.undo));
+  $("s-input").addEventListener("keydown", e => {
+    const key = e.key.toLowerCase();
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || (key !== "z" && key !== "y") || !isInput(e)) return;
+    e.preventDefault();
+    if (key === "y" || e.shiftKey) step(hist.redo, hist.undo); else step(hist.undo, hist.redo);
+  });
+
   let timer;
   function changed() {
+    trackForm();
     store.set("single", JSON.stringify(formState()));
     clearTimeout(timer);
     const rerun = S.live && S.gypsy;
@@ -1534,6 +1584,7 @@
     setStatus(S.gypsy ? "Ready" : "Loading model…");
     selectTab("s-input");
     store.set("single", "");
+    trackForm();   // so Reset can be undone
   });
   const RENDER = { sum: renderSummary, culm: renderCulm, yield: renderYield, chart: renderCharts, export: () => {} };
   for (const sel of document.querySelectorAll("#mode-single select[data-pick]"))
@@ -1557,6 +1608,7 @@
   buildForm();
   setForm({});
   try { const saved = JSON.parse(store.get("single") || "null"); if (saved) setForm(saved); } catch (e) { /* ignore */ }
+  hist.last = JSON.stringify(formState());   // the history starts from the form as opened
 
   GypsyUI.model.then(m => {
     S.gypsy = m;

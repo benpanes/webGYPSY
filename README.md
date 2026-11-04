@@ -31,7 +31,7 @@ may change, so use a release for published work.
   are over stand age and species MAI over the species' total age.
 - **Multiple stands** runs a table of stands from a CSV or spreadsheet, as
   `GYPSY_Sim()` does in R, with several simulations to compare, charts and a
-  results table.
+  yield table.
 
 Species can use different types of age, site index and density. In single
 stand mode, tick **Show all columns** on the Species card; in multiple stands
