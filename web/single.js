@@ -98,10 +98,22 @@
 
   // Stand total charts (the chart under the results, and the Charts tab)
   const GROUPS = [["con", "Conifer", 3], ["dec", "Deciduous", 1], ["all", "Total", 2]];
+  // [column prefix, label, unit, merchantable (dashed), only with "Allow all
+  // charts"]. All are for conifer, deciduous and total: the Charts tab's
+  // measures summed, or averaged, by group (groupColumns).
   const GROUP_MEASURES = [
-    ["mvol_",   "Merchantable volume", "m³/ha"],
-    ["mai_sa_", "Merchantable MAI (stand age)", "m³/ha/yr"],
-    ["tvol_",   "Total volume", "m³/ha"],
+    ["mvol_",    "Merchantable volume", "m³/ha", true],
+    ["mai_sa_",  "Merchantable MAI (stand age)", "m³/ha/yr", true],
+    ["tvol_",    "Total volume", "m³/ha", false],
+    ["tmai_sa_", "Total MAI (stand age)", "m³/ha/yr", false, true],
+    ["mai_m_",   "Merchantable MAI (species age)", "m³/ha/yr", true, true],
+    ["mai_t_",   "Total MAI (species age)", "m³/ha/yr", false, true],
+    ["topht_",   "Top height (mean weighted by basal area)", "m", false, true],
+    ["qmd_",     "Quadratic mean diameter", "cm", false, true],
+    ["ba_",      "Basal area", "m²/ha", false, true],
+    ["sc_",      "Species composition", "proportion", false, true],
+    ["n_",       "Density", "stems/ha", false, true],
+    ["mn_",      "Merchantable density", "stems/ha", true, true],
   ];
 
   // Charts tab. Those with m and t overlap merchantable and total versions of
@@ -854,8 +866,35 @@
     const groups = { con: present.some(s => CONIFERS.includes(s)), dec: present.includes("AW") };
     // Species whose site index was adjusted
     const improved = present.filter(s => TI_SPP.includes(s) && Number.isFinite(init[`${lc(s)}_gw`]) && init[`${lc(s)}_gw`] !== 0);
-    return { form, present, standAge, tmax, to, res, col, len, init, obs, nObs, groups, improved,
+    return { form, present, standAge, tmax, to, res, col, gcol: groupColumns(col, len), len, init, obs, nObs, groups, improved,
              baflag: form.baflag, label: form.id.trim() || "New stand" };
+  }
+
+  // By species measures for conifer, deciduous and total, for the chart under
+  // the results (not exported): density, merchantable density, basal area and
+  // composition summed; quadratic mean diameter from the stems and their
+  // diameters; top height weighted by basal area (by density before any has
+  // basal area)
+  function groupColumns(col, len) {
+    const z = v => (Number.isFinite(v) ? v : 0);
+    const make = f => { const out = new Float64Array(len); for (let r = 0; r < len; r++) out[r] = f(r); return out; };
+    const at = (p, s, r) => z(col[p + lc(s)]?.[r]);
+    const out = {};
+    for (const [g, list] of [["con", CONIFERS], ["dec", ["AW"]], ["all", SPECIES]]) {
+      for (const p of ["n_", "mn_", "ba_", "sc_"]) out[p + g] = make(r => list.reduce((a, s) => a + at(p, s, r), 0));
+      out["qmd_" + g] = make(r => {
+        let n = 0, sq = 0;
+        for (const s of list) { const ni = at("n_", s, r), q = at("qmd_", s, r); n += ni; sq += ni * q * q; }
+        return n > 0 && sq > 0 ? Math.sqrt(sq / n) : NaN;
+      });
+      out["topht_" + g] = make(r => {
+        const w = s => (list.some(t => at("ba_", t, r) > 0) ? at("ba_", s, r) : at("n_", s, r));
+        let sw = 0, sh = 0;
+        for (const s of list) { const h = col["topht_" + lc(s)]?.[r]; if (Number.isFinite(h)) { sw += w(s); sh += w(s) * h; } }
+        return sw > 0 ? sh / sw : NaN;
+      });
+    }
+    return out;
   }
 
   // Number formatting for display
@@ -1021,14 +1060,14 @@
   // Charts, as in the Excel tool's report
   // Stand totals for the groups given, every projection overlapped: coloured
   // by group, dashed when merchantable, tree improvement scenarios as shades.
-  function groupChart(D, prefix, label, unit, groups, set = [D]) {
+  function groupChart(D, prefix, label, unit, groups, set = [D], merch = !prefix.startsWith("t")) {
     const many = set.length > 1;
     const series = [];
     for (const E of set) {
       const i = D.set.indexOf(E);
       for (const [g, name, slot] of GROUPS.filter(([g]) => groups.includes(g)))
         series.push({ label: many ? `${name} – ${gwLabel(E)}` : name, slot, shade: i,
-                      dash: prefix.startsWith("t") ? 0 : 1, x: E.col.standage, y: E.col[prefix + g] });
+                      dash: merch ? 1 : 0, x: E.col.standage, y: E.gcol?.[prefix + g] ?? E.col[prefix + g] });
     }
     return { key: prefix + "group", title: label, yLabel: `${label.replace(/ \(.*\)$/, "")} (${unit})`, series, xLabel: X_LABEL,
              markMax: prefix.includes("mai") };
@@ -1083,10 +1122,7 @@
     renderSummary();
     renderCulm();
     renderYield();
-    const q = $("sQuickChart"), keep = q.value || GROUP_MEASURES[0][0];
-    q.innerHTML = "";
-    for (const [p, label] of GROUP_MEASURES) q.add(new Option(label, p));
-    q.value = keep;
+    fillQuickMenu();
     renderQuickPick();
     renderQuick();
     renderCharts();
@@ -1162,13 +1198,24 @@
     }
   }
 
+  // The chart menu: the first three measures, or every one with "Allow all
+  // charts" ticked (a measure no longer offered goes back to the first)
+  function fillQuickMenu() {
+    const q = $("sQuickChart"), all = $("sQuickAll").checked;
+    const list = GROUP_MEASURES.filter(m => all || !m[4]);
+    const keep = list.some(m => m[0] === q.value) ? q.value : list[0][0];
+    q.innerHTML = "";
+    for (const [p, label] of list) q.add(new Option(label, p));
+    q.value = keep;
+  }
+
   const QUICK_HEIGHT = 300;
   function renderQuick() {
     if (!S.set) return;
     const D = S.set[0];
-    const [p, label, unit] = GROUP_MEASURES.find(m => m[0] === $("sQuickChart").value);
+    const [p, label, unit, merch] = GROUP_MEASURES.find(m => m[0] === $("sQuickChart").value);
     const groups = GROUPS.map(([g]) => g).filter(g => (g === "all" || D.groups[g]) && S.groupsShown.has(g));
-    const spec = groupChart(D, p, label, unit, groups, D.set.filter(E => !S.scenariosHidden.has(sc(E))));
+    const spec = groupChart(D, p, label, unit, groups, D.set.filter(E => !S.scenariosHidden.has(sc(E))), merch);
     GypsyChart.line($("sQuickBox"), { ...spec, height: QUICK_HEIGHT });
   }
 
@@ -1477,9 +1524,15 @@
   }
   $("sUndo").addEventListener("click", () => step(hist.undo, hist.redo));
   $("sRedo").addEventListener("click", () => step(hist.redo, hist.undo));
-  $("s-input").addEventListener("keydown", e => {
+  // Ctrl+Z, Ctrl+Y (or Ctrl+Shift+Z) anywhere in single stand mode, except in
+  // a text box outside the inputs, which keeps the browser's own undo
+  document.addEventListener("keydown", e => {
     const key = e.key.toLowerCase();
-    if (!(e.ctrlKey || e.metaKey) || e.altKey || (key !== "z" && key !== "y") || !isInput(e)) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || (key !== "z" && key !== "y")) return;
+    if (document.body.dataset.mode !== "single") return;
+    const t = e.target, typing = t.isContentEditable || t.tagName === "TEXTAREA" ||
+      (t.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(t.type));
+    if (typing && (!t.closest("#s-input") || t.closest("#sResults"))) return;
     e.preventDefault();
     if (key === "y" || e.shiftKey) step(hist.redo, hist.undo); else step(hist.undo, hist.redo);
   });
@@ -1598,6 +1651,7 @@
       renderCharts();
     }));
   $("sQuickChart").addEventListener("change", renderQuick);
+  $("sQuickAll").addEventListener("change", () => { fillQuickMenu(); renderQuick(); });
   $("sYieldKind").addEventListener("change", renderYield);
   $("sYieldStep").addEventListener("change", renderYield);
   // Close the export menu when clicking elsewhere

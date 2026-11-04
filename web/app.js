@@ -523,13 +523,19 @@
     clearTimeout(updateGridStatus.timer);
     updateGridStatus.timer = setTimeout(updateGridStatus, 200);
   });
-  $("grid").addEventListener("keydown", e => {
+  // Ctrl+Z, Ctrl+Y (or Ctrl+Shift+Z) anywhere in multiple stands mode, except
+  // in a text box outside the table, which keeps the browser's own undo
+  document.addEventListener("keydown", e => {
     const key = e.key.toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && (key === "z" || key === "y")) {
-      e.preventDefault();
-      if (key === "y" || e.shiftKey) redo(); else undo();
-      return;
-    }
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || (key !== "z" && key !== "y")) return;
+    if (document.body.dataset.mode !== "multi") return;
+    const t = e.target, typing = t.isContentEditable || t.tagName === "TEXTAREA" ||
+      (t.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(t.type));
+    if (typing && !t.closest("#grid")) return;
+    e.preventDefault();
+    if (key === "y" || e.shiftKey) redo(); else undo();
+  });
+  $("grid").addEventListener("keydown", e => {
     if (e.target.tagName !== "INPUT" || e.key !== "Enter") return;
     e.preventDefault();
     const tr = e.target.closest("tr");

@@ -143,6 +143,10 @@ button.secondary { background: transparent; color: var(--text); border-color: va
 button.link { background: none; border: none; color: var(--muted); padding: 2px 6px; }
 button:disabled { opacity: 0.5; cursor: default; }
 #sReset, #mReset { background: var(--danger); border-color: var(--danger); color: var(--danger-text); }
+/* Undo and redo: circular arrows, counter-clockwise and (mirrored) clockwise */
+button.icon-btn { padding: 0; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+button.icon-btn svg { display: block; transform: rotate(-135deg); }   /* arrowhead at the lower left */
+button.icon-btn.redo svg { transform: scaleX(-1) rotate(-135deg); }      /* mirrored: lower right */
 #sClear { white-space: nowrap; }
 #sRun:disabled { background: var(--border); border-color: var(--border); color: var(--muted); opacity: 1; }
 /* Each scenario's remove button sits over the right edge of its column */

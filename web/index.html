@@ -32,8 +32,8 @@
         <span class="small" id="sStatus">Loading model…</span>
         <button id="sRun" disabled>Start</button>
         <button id="sReset">Reset</button>
-        <button class="secondary" id="sUndo" disabled title="Undo (Ctrl+Z)">Undo</button>
-        <button class="secondary" id="sRedo" disabled title="Redo (Ctrl+Y)">Redo</button>
+        <button class="secondary icon-btn" id="sUndo" disabled title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.17 4.79A5 5 0 1 0 8.87 3.08"/><path d="M11.81 1.36L8.87 3.08L11.05 5.7"/></svg></button>
+        <button class="secondary icon-btn redo" id="sRedo" disabled title="Redo (Ctrl+Y)" aria-label="Redo"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.17 4.79A5 5 0 1 0 8.87 3.08"/><path d="M11.81 1.36L8.87 3.08L11.05 5.7"/></svg></button>
         <details class="menu" id="sExportMenu">
           <summary class="secondary-btn">Export</summary>
           <div class="menu-body">
@@ -117,7 +117,10 @@
           <section class="card">
             <div class="section-head">
               <h3 class="sub-head">Chart</h3>
-              <select id="sQuickChart" aria-label="Chart measure"></select>
+              <div class="row" style="align-items:center">
+                <label class="check"><input type="checkbox" id="sQuickAll"> Allow all charts</label>
+                <select id="sQuickChart" aria-label="Chart measure"></select>
+              </div>
             </div>
             <div class="checks quick-pick" id="sQuickPick"></div>
             <div id="sQuickBox"></div>
@@ -195,8 +198,8 @@
       </nav>
       <div class="tab-actions">
         <button id="mReset">Reset</button>
-        <button class="secondary" id="undoGrid" disabled title="Undo a table edit (Ctrl+Z)">Undo</button>
-        <button class="secondary" id="redoGrid" disabled title="Redo (Ctrl+Y)">Redo</button>
+        <button class="secondary icon-btn" id="undoGrid" disabled title="Undo a table edit (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.17 4.79A5 5 0 1 0 8.87 3.08"/><path d="M11.81 1.36L8.87 3.08L11.05 5.7"/></svg></button>
+        <button class="secondary icon-btn redo" id="redoGrid" disabled title="Redo (Ctrl+Y)" aria-label="Redo"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.17 4.79A5 5 0 1 0 8.87 3.08"/><path d="M11.81 1.36L8.87 3.08L11.05 5.7"/></svg></button>
       </div>
     </div>
 
