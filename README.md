@@ -54,7 +54,7 @@ Tree improvement runs must use site index, or age and top height, from
 unimproved stands; a stand grown from improved seed already includes its
 genetic gain and should be run normally. The app warns about this whenever
 tree improvement is open. In multiple stands mode, tick
-**Tree improvement** before running and assign the genetic worth and
+**Project tree improvement** before running and assign the genetic worth and
 selection age columns (`gw`, `sel_age`). A missing SW or PL genetic worth is
 treated as 0, with a warning.
 
