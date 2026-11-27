@@ -7,10 +7,11 @@ R package and the GYPSY SAS program.
 
 ## Download
 
-Get `gypsy-vX.Y.Z.html` from the
+Use the latest release online at <https://benpanes.github.io/webGYPSY/>, or
+get `gypsy-vX.Y.Z.html` from the
 [latest release](https://github.com/benpanes/webGYPSY/releases/latest), save it
 anywhere, and open it in a web browser by double-clicking. It is a single file
-that works offline; your data never leave your computer.
+that works offline; your data never leave your computer, online or not.
 
 ### Experimental build
 
@@ -104,12 +105,18 @@ This writes:
   whole app in one file. Users can download it and open it by
   double-clicking; it works offline.
 
-`.uild.ps1 -Channel Experimental` adds a banner and title marking a
-pre-release build. The [Experimental build](.github/workflows/experimental.yml)
-workflow does this for each push to `dev` and publishes the result on GitHub
-Pages. It needs, once, in the repository settings: **Pages** > Source
-"GitHub Actions", and **Environments** > `github-pages` > Deployment branches
-allowing `dev`.
+`.\build.ps1 -Channel Experimental` adds a banner and title marking a
+pre-release build, and drops the footer's link to the Experimental build.
+
+The [Pages](.github/workflows/pages.yml) workflow publishes both online
+copies to GitHub Pages: the latest release's `gypsy-*.html` exactly as
+released at the site's root, and an Experimental build of `dev` at
+`experimental/`. A repository has one Pages site and each deployment replaces
+all of it, so every run publishes both. It runs on each push to `dev`, when a
+release is published (so each release needs its `gypsy-vX.Y.Z.html`
+attached), and by hand. It needs, once, in the repository settings:
+**Pages** > Source "GitHub Actions", and **Environments** > `github-pages` >
+Deployment branches and tags allowing the branch `dev` and the tags `v*`.
 
 ## Using the model from JavaScript
 

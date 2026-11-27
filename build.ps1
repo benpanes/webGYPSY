@@ -97,8 +97,13 @@ if ($Channel) {
   $html = $html.Replace("<title>GYPSY Growth Model</title>", "<title>GYPSY Growth Model ($name)</title>")
   $banner = "<div class=""channel-banner"" role=""note""><strong>$name build.</strong> This is the version under development: " +
             "features and results may change, and it may have errors. For a stable version, use the " +
-            "<a href=""https://github.com/benpanes/webGYPSY/releases/latest"" target=""_blank"" rel=""noopener"">latest release</a>.</div>"
+            "<a href=""https://benpanes.github.io/webGYPSY/"">latest release</a> online, or " +
+            "<a href=""https://github.com/benpanes/webGYPSY/releases/latest"" target=""_blank"" rel=""noopener"">download it</a>.</div>"
   $html = ([regex]"<main>").Replace($html, "<main>`n  $banner", 1)
+  # A pre-release build doesn't point to the Experimental build
+  $link = [regex]'(?s)\s*<div class="small" id="channelLink">.*?</div>'
+  if (-not $link.IsMatch($html)) { throw "web/index.html has no Experimental build link" }
+  $html = $link.Replace($html, "", 1)
   $info = "$Channel $dot $info"
 }
 

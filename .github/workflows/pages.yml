@@ -1,0 +1,79 @@
+# GitHub Pages: two copies of the app on one site
+#   https://benpanes.github.io/webGYPSY/               the latest release
+#   https://benpanes.github.io/webGYPSY/experimental/  the dev branch
+#
+# A repository has one Pages site and each deployment replaces all of it, so
+# every run publishes both: the latest release's gypsy-*.html exactly as
+# released (not rebuilt), and a fresh Experimental build of dev. It runs on
+# each push to dev, when a release is published, and by hand.
+#
+# One-time setup in the repository settings:
+#   - Pages: Source "GitHub Actions"
+#   - Environments > github-pages > Deployment branches and tags: allow the
+#     branch "dev" and the tags "v*" (a release run runs on its tag)
+
+name: Pages
+
+on:
+  push:
+    branches: [dev]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer run replaces a queued one
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # The Experimental build is always dev, whatever started the run
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          submodules: recursive
+          fetch-depth: 0        # tags, for the version shown in the footer
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.13       # as used for the local builds
+
+      - name: Build Experimental
+        shell: pwsh
+        run: ./build.ps1 -Channel Experimental
+
+      - name: Get the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern 'gypsy-*.html' --dir release
+          n=$(ls release/gypsy-*.html | wc -l)
+          [ "$n" -eq 1 ] || { echo "The latest release should have one gypsy-*.html, it has $n"; exit 1; }
+          echo "Latest release: $(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName) ($(ls release))"
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/experimental
+          cp release/gypsy-*.html _site/index.html
+          cp dist/gypsy.html _site/experimental/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
