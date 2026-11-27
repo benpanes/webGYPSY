@@ -62,7 +62,7 @@ treated as 0, with a warning.
 
 | Path                     | Contents                                                      |
 |--------------------------|---------------------------------------------------------------|
-| `rGYPSY/`                | rGYPSY as a git submodule (`main` branch); the model is in `rGYPSY/src/core` |
+| `rGYPSY/`                | rGYPSY as a git submodule, on a release tag; the model is in `rGYPSY/src/core` |
 | `src/gypsy_wasm.cpp`     | JavaScript bindings: exposes `runSim(input, options)`          |
 | `web/gypsy-api.js`       | Helpers: delimited text, column mapping, stand ordering, chunked runs, CSV output |
 | `web/vendor/`            | [SheetJS](https://sheetjs.com) Community Edition 0.20.3 (`xlsx.full.min.js`, Apache 2.0, licence in `SHEETJS_LICENSE`), for reading .xlsx, .xls, .xlsb and .ods files |
@@ -143,13 +143,21 @@ them all in memory.
 
 ## Updating the model
 
-After changes are pushed to rGYPSY's `main` branch:
+webGYPSY builds on rGYPSY releases only: the submodule points at a release
+tag (now `v1.0.0`), the same code that's on
+[R-universe](https://benpanes.r-universe.dev), and the app's footer shows that
+version. `build.ps1` refuses to build when the submodule isn't exactly on a
+release tag, unless a `-Channel` (pre-release) build is asked for.
+
+When rGYPSY publishes a new release (here `v1.1.0`):
 
 ```bash
-git submodule update --remote rGYPSY
+git -C rGYPSY fetch --tags origin
+git -C rGYPSY checkout v1.1.0
 ```
 
-Rebuild, re-run the test, and commit the new submodule pointer.
+Regenerate the reference and rebuild, re-run the tests (below), and commit
+the new submodule pointer (`git add rGYPSY`).
 
 ## Testing against R
 

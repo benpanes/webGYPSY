@@ -2,7 +2,8 @@
 #
 # Needs Emscripten loaded in this PowerShell session, e.g.
 #   . C:\Users\Ben\Documents\git_repos\emsdk\emsdk_env.ps1
-# and the rGYPSY submodule checked out (git submodule update --init).
+# and the rGYPSY submodule checked out (git submodule update --init) on an
+# rGYPSY release tag.
 #
 # -sSINGLE_FILE embeds the WebAssembly in gypsy.js, so web/index.html also
 # works when opened straight from disk.
@@ -62,10 +63,26 @@ if ($html -match '<script src=|<link rel="stylesheet"|<img class="logo"') { thro
 
 # Build information shown in the app's footer: version from the git tag
 # ("v1.0.0", or "v1.0.0-2-gabc1234" / "-dirty" between releases), the rGYPSY
-# commit the model was built from, and the build date
+# release the model was built from, and the build date
 $version = (git describe --tags --always --dirty 2>$null)
 if (-not $version) { $version = "unknown" }
-$model = (git -C rGYPSY rev-parse --short HEAD 2>$null)
+# webGYPSY builds on rGYPSY releases only: the submodule must sit exactly on
+# a release tag. A -Channel build (e.g. Experimental) may use any commit,
+# shown as "v1.0.0-2-gabc1234".
+# git's "no tag" message goes to stderr, which Windows PowerShell would turn
+# into a terminating error under ErrorActionPreference Stop
+function Get-GitOutput { $ErrorActionPreference = "Continue"; & git @args 2>$null }
+$model = Get-GitOutput -C rGYPSY describe --tags --exact-match --match "v*"
+if (-not $model) {
+  $any = Get-GitOutput -C rGYPSY describe --tags --always --dirty --match "v*"
+  if (-not $Channel) {
+    throw "rGYPSY is at $any, not an rGYPSY release. Check out a release tag (see 'Updating the model' in README.md), or build with -Channel for a pre-release."
+  }
+  $model = $any
+}
+if ((Get-GitOutput -C rGYPSY status --porcelain) -and -not $Channel) {
+  throw "rGYPSY has uncommitted changes; a release build must use the tagged release as is."
+}
 $date = Get-Date -Format "yyyy-MM-dd"
 $dot = [char]0x00B7   # middle dot (non-ASCII text in this script would be misread by Windows PowerShell)
 $info = "Version $version $dot model rGYPSY $model $dot built $date"

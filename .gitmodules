@@ -1,4 +1,3 @@
 [submodule "rGYPSY"]
 	path = rGYPSY
 	url = https://github.com/benpanes/rGYPSY.git
-	branch = main
