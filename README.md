@@ -3,7 +3,8 @@
 A browser version of the GYPSY growth and yield model (Alberta, 2009
 functions). The model runs as WebAssembly compiled from the C++ core of the
 [rGYPSY](https://github.com/benpanes/rGYPSY) R package, so results match the
-R package and the GYPSY SAS program.
+R package, which follows the GYPSY SAS program and, where they differ, the
+GYPSY 2009 DLL.
 
 ## Download
 
